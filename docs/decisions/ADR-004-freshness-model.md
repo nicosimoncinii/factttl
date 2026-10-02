@@ -9,7 +9,7 @@ Age does not determine truth. A useful system needs to distinguish currentness, 
 
 ## Decision
 
-Model freshness as a policy-based status computed from a qualifying check timestamp, a resolved TTL policy, and an explicit evaluation time. Include `STABLE`, `TIME_SENSITIVE`, and `HIGHLY_VOLATILE` sensitivity classes plus explicit `UNKNOWN`, `NOT_REQUIRED`, and `UNVERIFIED` states. Expiry means review is due, not false. Policy resolution is per-claim TTL, then category TTL, then stable/no-routine-review; unresolved non-stable policy remains unknown. A completed `SUPPORTED` or `CONTRADICTED` evidence assessment can reset the interval; inconclusive/error attempts and extraction alone cannot. Timestamps must be timezone-aware, evaluation time is supplied by the caller, and equality at the deadline is stale.
+Model freshness as a policy-based status computed from a qualifying check timestamp, a resolved TTL policy, and an explicit evaluation time. Include `STABLE`, `TIME_SENSITIVE`, and `HIGHLY_VOLATILE` sensitivity classes plus explicit `UNKNOWN`, `NOT_REQUIRED`, and `UNVERIFIED` states. Expiry means review is due, not false. Resolve explicit per-claim policy before category policy, then use the class default; a category TTL applies to `STABLE`, while an explicit per-claim disable overrides it. Unresolved non-stable policy remains unknown. A completed `SUPPORTED` or `CONTRADICTED` evidence assessment can reset the interval; inconclusive/error attempts and extraction alone cannot. Timestamps must be timezone-aware, evaluation time is supplied by the caller, and equality at the deadline is stale.
 
 ## Alternatives
 

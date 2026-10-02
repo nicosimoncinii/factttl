@@ -51,18 +51,18 @@ The core evaluator works on one structured claim at a time. Text extraction and 
 
 The caller supplies an explicit `evaluation_time`; the core does not read the system clock. A claim identifier may be supplied by a surrounding record/report layer but is not needed to calculate freshness.
 
-The evaluator returns a status, the evaluation time, the resolved TTL (if any), the last qualifying verification time (if any), the next review time (if calculable), and a human-readable reason. Freshness results do not contain or infer a truth value.
+The evaluator returns a status, the evaluation time, the resolved TTL (if any), the last qualifying check time (if any), the next review time (if calculable), and a human-readable reason. Freshness results do not contain or infer a truth value.
 
 ## TTL policy resolution
 
-Resolve one effective policy in this order:
+Resolve one effective policy in this order. At each scope, a TTL and an explicit disable are mutually exclusive settings:
 
-1. Per-claim `ttl` override.
-2. Configured TTL for the claim's `category`.
-3. If the resolved class is `STABLE` and no TTL was configured, routine review is disabled.
-4. Otherwise, if no TTL can be resolved, the policy is insufficient and freshness is `UNKNOWN`.
+1. Per-claim policy: use its TTL override or explicit disable, if present. This takes precedence over the category policy.
+2. Category policy: use its configured TTL or explicit disable, if present. A category TTL applies even when the claim class is `STABLE`.
+3. If neither scope specifies a policy and the resolved class is `STABLE`, routine review is disabled.
+4. Otherwise, if neither scope specifies a policy, the policy is insufficient and freshness is `UNKNOWN`.
 
-An explicit policy disable for the claim or category also means routine review is `NOT_REQUIRED`. A missing category or missing TTL for a non-stable claim must never silently imply `STABLE` or `NOT_REQUIRED`. An explicit TTL is sufficient to evaluate a claim even if its temporal class is `UNKNOWN`.
+An explicit disable at either scope means routine review is `NOT_REQUIRED`, unless a higher-priority per-claim TTL overrides a category disable. A missing category or missing TTL for a non-stable claim must never silently imply `STABLE` or `NOT_REQUIRED`. An explicit TTL is sufficient to evaluate a claim even if its temporal class is `UNKNOWN`.
 
 Category suggestions and classifier outputs do not override an explicit caller policy. The concrete policy file syntax and category defaults are defined separately from this decision procedure.
 
@@ -70,7 +70,7 @@ Category suggestions and classifier outputs do not override an explicit caller p
 
 Statuses are mutually exclusive:
 
-- `NOT_REQUIRED`: resolved policy explicitly disables routine review, or the class is `STABLE` with no TTL override. No verification timestamp is needed. This is not the same as “freshly verified.”
+- `NOT_REQUIRED`: resolved policy explicitly disables routine review, or the class is `STABLE` and no TTL was resolved from the per-claim or category policy. No verification timestamp is needed. This is not the same as “freshly verified.”
 - `UNKNOWN`: policy cannot be resolved safely, the class/category/policy is ambiguous, or a timestamp is in the future relative to evaluation time. Include a reason so callers can distinguish these cases.
 - `UNVERIFIED`: a review interval applies but no qualifying verification timestamp exists.
 - `STALE`: a qualifying timestamp exists and the review deadline has been reached or passed. This means review is due; it does not mean false.

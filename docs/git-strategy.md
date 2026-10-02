@@ -18,7 +18,7 @@ Use Conventional Commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore
 
 ## Initial repository protections
 
-Once GitHub is connected, enable Issues and Discussions (Discussions for design and contributor Q&A). Use `main` as default. For a new personal repository, start with a light rule: no force pushes or deletion of `main`; require a PR only once a second maintainer/contributor can review it, to avoid a self-review bottleneck. Revisit this when collaborators join. Do not create a `develop` branch.
+GitHub is configured with Issues and Discussions enabled and `main` as the default branch. The active `Protect main branch` ruleset targets the default branch and blocks force pushes and deletion. It does not require pull requests or status checks yet; add review requirements when a second maintainer can review contributions. Do not create a `develop` branch.
 
 ## Proposed topics
 

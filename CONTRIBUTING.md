@@ -1,6 +1,6 @@
 # Contributing to FactTTL
 
-Thanks for helping shape FactTTL. The project is currently documentation-only: there is no application code or development environment to install yet. Start with an issue or discussion so we can agree on scope before implementation.
+Thanks for helping shape FactTTL. The repository now includes the minimal Python package scaffold; product features are still under development. Start with an issue or discussion so we can agree on scope before implementation.
 
 ## Before starting
 
@@ -8,9 +8,24 @@ Thanks for helping shape FactTTL. The project is currently documentation-only: t
 2. Check the issue backlog and existing discussions for overlap.
 3. For a behavior or architecture change, open an issue first. Changes to accepted architectural choices require an ADR update.
 
-## Development setup (planned)
+## Development setup
 
-Once the Python package skeleton lands, the expected setup will use Python 3.11 or newer and `uv`. Exact commands will be added with the first implementation milestone. No dependencies need to be installed for documentation contributions.
+The package supports Python 3.11 or newer and uses `uv` to create a reproducible development environment. Install `uv`, then run:
+
+```console
+uv sync --locked
+```
+
+Run the quality checks with:
+
+```console
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src
+uv run pytest
+```
+
+To intentionally update dependency versions, edit `pyproject.toml` and run `uv lock`; commit the resulting `uv.lock` with the change. Documentation-only contributions do not require installing the development dependencies.
 
 ## Branches
 

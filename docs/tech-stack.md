@@ -1,6 +1,6 @@
 # Proposed technology stack
 
-No application dependency has been installed or added to a manifest. These are design choices for the first implementation, not current runtime requirements.
+The initial package scaffold is installable and declares no runtime dependencies. Development tools are managed separately in the `dev` dependency group. The choices below guide future implementation; they are not all current runtime requirements.
 
 ## Language comparison
 

@@ -1,3 +1,3 @@
-# Planned test location
+# Tests
 
-No tests are present because no product code has been implemented. Test strategy will be added with the initial package skeleton.
+This directory contains a smoke test for importing the package scaffold. Product behavior tests will be added with the corresponding implementation issues.

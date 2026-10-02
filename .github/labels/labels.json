@@ -1,0 +1,22 @@
+[
+  {"name":"area: claims","color":"1D76DB","description":"Claim input, extraction, and claim data"},
+  {"name":"area: classification","color":"1D76DB","description":"Temporal sensitivity and category classification"},
+  {"name":"area: freshness","color":"1D76DB","description":"TTL policies and freshness status"},
+  {"name":"area: verification","color":"1D76DB","description":"Evidence and verification providers"},
+  {"name":"area: cli","color":"1D76DB","description":"Command-line interface"},
+  {"name":"area: reports","color":"1D76DB","description":"Human and machine-readable reports"},
+  {"name":"area: config","color":"1D76DB","description":"Configuration and policy loading"},
+  {"name":"area: sdk","color":"1D76DB","description":"Public SDK surface"},
+  {"name":"area: integrations","color":"1D76DB","description":"External agent and protocol integrations"},
+  {"name":"area: docs","color":"1D76DB","description":"Documentation and project governance"},
+  {"name":"area: core","color":"1D76DB","description":"Core models and shared behavior"},
+  {"name":"type: feature","color":"A2EEEF","description":"New capability"},
+  {"name":"type: bug","color":"D73A4A","description":"Incorrect behavior"},
+  {"name":"type: research","color":"D4C5F9","description":"Design or investigation needed"},
+  {"name":"type: refactor","color":"FBCA04","description":"Internal restructuring"},
+  {"name":"priority: high","color":"B60205","description":"Blocks the next milestone or core correctness"},
+  {"name":"priority: medium","color":"FBCA04","description":"Important planned work"},
+  {"name":"priority: low","color":"0E8A16","description":"Useful but not on the critical path"},
+  {"name":"good first issue","color":"7057FF","description":"Scoped work suitable for a first contribution"},
+  {"name":"help wanted","color":"008672","description":"Maintainer welcomes contributor help"}
+]

@@ -1,0 +1,39 @@
+name: Bug report
+description: Report incorrect behavior in a released or development build
+title: "bug: "
+labels: ["type: bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "FactTTL is currently in design stage. If this is a design concern, use the design proposal template."
+  - type: input
+    id: version
+    attributes:
+      label: FactTTL version or commit
+      placeholder: "Not applicable during design stage"
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps or input to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Environment and additional context
+    validations:
+      required: false

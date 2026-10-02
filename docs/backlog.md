@@ -1,6 +1,6 @@
 # Initial project backlog
 
-Planning backlog only. These issues have **not** been created on GitHub because GitHub authentication is unavailable. Milestone titles and issue labels below are the proposed initial set.
+Initial planning backlog. All 21 issues listed here have been created on GitHub and assigned to the corresponding milestone and labels. Milestones and labels are active in the repository.
 
 ## Milestones
 

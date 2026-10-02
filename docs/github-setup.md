@@ -1,11 +1,11 @@
 # GitHub setup checklist
 
-The local workspace is not connected to a GitHub remote and the available `gh` account token is invalid. No remote repository, branch, label, milestone, issue, topic, or protection rule was created.
+Repository created: [nicosimoncinii/factttl](https://github.com/nicosimoncinii/factttl), public, with `main` as the default branch. The local `main` branch tracks `origin/main`.
 
-After authenticating the intended GitHub account, create a **public** repository named `factttl` with this description:
+The repository description is:
 
 > Give AI facts a time-to-live. Detect stale and time-sensitive claims before they become outdated answers.
 
-Enable Issues and Discussions. Use the README and MIT license already present. Add the topics listed in [git strategy](git-strategy.md). Create `main` as the default branch; do not create `develop`. Create milestones and labels from [the backlog](backlog.md) and [`labels.json`](../.github/labels/labels.json). For a personal repository, begin with light branch protection as described in `git-strategy.md`.
+Issues and Discussions are enabled. The README and MIT license are present. Topics, milestones, and labels have been configured from [the backlog](backlog.md) and [`labels.json`](../.github/labels/labels.json). Main branch protections remain to be set.
 
-The project name has not been changed. Recheck exact repository and package registry availability before creating the public resources. This file is an operational checklist, not an indication that GitHub resources already exist.
+The repository exists under the project owner's personal account. Exact PyPI and npm package-name availability has not been reserved or conclusively checked; recheck before publishing packages.

@@ -2,9 +2,9 @@
 
 **Give AI claims an expiration date.**
 
-FactTTL is a planned, model-agnostic freshness layer for AI answers. It is designed to identify claims whose usefulness can expire, apply configurable time-to-live (TTL) policies, and report when claims should be checked again.
+FactTTL is an early-stage project to build a model-agnostic freshness layer for AI answers. It is designed to identify claims whose usefulness can expire, apply configurable time-to-live (TTL) policies, and report when claims should be checked again.
 
-> **Project status: design stage.** No scanner, verifier, CLI, SDK, or integrations are implemented yet. This repository contains the product scope and technical design for the first development phase.
+> **Project status: early development.** The minimal Python package scaffold is in place. No scanner, verifier, CLI, SDK, or integrations are implemented yet.
 
 ## What is FactTTL?
 

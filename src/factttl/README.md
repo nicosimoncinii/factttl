@@ -1,3 +1,3 @@
-# Planned package location
+# FactTTL package
 
-This directory reserves the future Python package location. It intentionally contains no application code during the design phase.
+This package currently contains only the importable package marker. Product functionality will be added in later implementation issues.

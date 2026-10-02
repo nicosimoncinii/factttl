@@ -9,7 +9,8 @@
 | Confidence | A calibrated or provider-reported estimate about a judgment. It is not a substitute for evidence or freshness. |
 | Source quality | An assessment of a source's authority, relevance, and reliability. It is separate from whether it supports a specific claim. |
 | Verification | A recorded attempt to compare a claim with evidence. A verification outcome can remain inconclusive. |
-| TTL | A configured duration after a relevant verification timestamp before review becomes due. |
+| TTL | A configured duration after a qualifying completed evidence check before review becomes due. |
+| Check time | `last_checked_at`: time of the latest completed assessment with a `SUPPORTED` or `CONTRADICTED` outcome; an inconclusive/error attempt does not reset freshness. |
 | Evaluation time | The explicit instant at which a freshness status is computed, preferably in UTC. |
 | Provenance | Information describing where evidence came from and when/how it was retrieved. |
 

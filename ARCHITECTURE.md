@@ -1,6 +1,8 @@
 # Architecture
 
-This is a pointer to the maintained design in [`docs/architecture.md`](docs/architecture.md). The system is not implemented.
+See the maintained design in [`docs/architecture.md`](docs/architecture.md).
+The freshness core, opt-in source verifier and local correction registry are
+implemented for personal testing; the complete extraction pipeline remains a proposal.
 
 ## Design constraints
 

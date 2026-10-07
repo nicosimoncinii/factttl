@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "FactTTL",
+  "version": "0.2.1",
+  "description": "Verifiche locali accanto ai riferimenti di ChatGPT, Claude e Gemini, attivabili per chat.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "factttl-local@factttl.dev",
+      "strict_min_version": "121.0",
+      "data_collection_permissions": {
+        "required": [
+          "websiteContent"
+        ]
+      }
+    }
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8765/*"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://www.claude.ai/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "item-ui.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "Apri le impostazioni FactTTL"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src http://127.0.0.1:8765"
+  }
+}

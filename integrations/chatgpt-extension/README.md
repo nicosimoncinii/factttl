@@ -62,8 +62,10 @@ configurato da quello disponibile nel servizio locale.
 
 L'analisi confronta l'affermazione con il testo della fonte e richiede citazioni
 presenti in quel testo. Fonti bloccate, citazioni mancanti e timeout restano
-inconcludenti. Il modello non rende vera una notizia e non cerca autonomamente
-fonti indipendenti per affermazioni senza URL.
+inconcludenti. Il confronto resta riferito alle prove raccolte. La ricerca di
+altre fonti usa l'opzione separata `-NewsDiscovery bing`: invia a Bing una breve
+query sul tema, anche per alcune affermazioni pubbliche senza URL. È disattivata
+per impostazione predefinita; la presenza di più domini non prova indipendenza.
 
 ## Prima prova su Chrome o Edge
 
@@ -115,27 +117,44 @@ riconosciuti. Un badge positivo riguarda i controlli effettuati e **non certific
 l'intera risposta**. CAPTCHA, accesso negato, claim non riconosciuti e mancanza
 di prove producono risultati inconcludenti o parziali.
 
-Le correzioni sono conservate da FactTTL. L'estensione non modifica la memoria
-interna del modello e non invia messaggi nella chat. Quando viene rilevato un
-contrasto puoi copiare la correzione con **Porta la correzione all'AI** e incollarla
-nella conversazione.
+Le correzioni sono conservate da FactTTL. Con **Memoria attiva**, al tuo prossimo
+invio lo strumento allega alla bozza un blocco visibile con i controlli pertinenti:
+affermazione precedente, valore osservato, fonte e scadenza. Questo permette al
+modello di ricevere la correzione anche in una nuova chat attivata. Non modifica
+la memoria interna del provider e non invia messaggi da solo. Spegnere la memoria
+o FactTTL rimuove un suo allegato ancora nella bozza; un allegato modificato va
+rimosso manualmente prima dell'invio con lo strumento spento. Puoi anche usare
+**Copia la correzione per la chat**. Dettagli in [prompt memory](../../docs/prompt-memory.md).
+
+Per un link prodotto Amazon, il lettore può aprire una scheda inattiva e leggere
+l'offerta principale nel browser: prezzo, disponibilità e prezzo di riferimento
+se presente. La scheda viene chiusa dopo il controllo. Venditori e varianti
+restano distinti; lo strumento non effettua acquisti né aggira CAPTCHA.
 
 ## Dati e accesso
 
-- Il content script legge soltanto le risposte dell'assistente nelle chat attive.
+- Il controllo legge le risposte dell'assistente nelle chat attive. La memoria
+  legge la bozza solo per preparare il tuo invio quando è attivata.
 - Testo e link vengono inviati al servizio FactTTL sul tuo PC; il servizio può
   consultare le fonti web indicate per verificarli.
 - Il token rimane nello storage locale limitato ai contesti fidati. Su Firefox
   senza quell'API, il token viene conservato in IndexedDB sull'origine privata
   dell'estensione; non viene salvato nello storage accessibile al content script.
   Le preferenze delle chat sono locali. Lo script della pagina non riceve il token.
-- L'estensione può contattare soltanto `http://127.0.0.1:8765`, non endpoint scelti
-  dalle pagine. Nessun cookie o credenziale di ChatGPT/Amazon viene inoltrato.
+- Il trasporto dei controlli usa soltanto `http://127.0.0.1:8765`, non endpoint
+  scelti dalle pagine. Nessun cookie o credenziale di ChatGPT/Amazon viene
+  inoltrato al bridge. Il lettore Amazon usa la normale sessione del browser
+  sui sei marketplace autorizzati; invia al bridge solo i campi dell'offerta.
+- Al tuo invio, il provider della chat riceve anche il blocco delle verifiche
+  pertinenti quando la memoria è attiva. Non vengono allegati HTML o citazioni
+  integrali delle fonti. Vedi [privacy](../../docs/privacy-and-network.md).
 - Le opzioni e gli script sono locali; non viene caricato codice remoto.
 
 Le verifiche passano attraverso job locali con risposte HTTP immediate e polling
 progressivo. Non dipendono da una singola richiesta HTTP lunga: ciascuna richiesta
-ha un limite di 10 secondi e il controllo complessivo di 90 secondi. L'annullamento
+ha un limite di 10 secondi e il controllo complessivo di 180 secondi. Le richieste
+di una chat vengono eseguite una alla volta, così un motore CPU impegnato non
+fa fallire subito il controllo successivo. L'annullamento
 del job è cooperativo; se il servizio è irraggiungibile viene tentato per 3 secondi.
 Se la connessione si interrompe proprio mentre il servizio sta creando un job e la
 risposta con il suo identificativo va persa, il job potrebbe non poter essere

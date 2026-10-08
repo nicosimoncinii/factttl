@@ -139,3 +139,20 @@ test("conflicting provided sources never produce a decisive news badge", () => {
   assert.equal(summary.status, "INCONCLUSIVE");
   assert.equal(summary.label, "Fonti in contrasto");
 });
+
+test("unlinked group can use one quoted source without verifying unread members", () => {
+  const first = "https://news.example/known", second = "https://other.example/unread";
+  const evidence = [
+    {provider: "ai_assessed_live_source", scope: "current_source_consistency", assessment: "SUPPORTED", source_analysis_truncated: true, citations: [{quote: "A validated source quotation supporting the claim.", source_url: first}]},
+    {provider: "provided_source_comparison", assessment: "SUPPORTED", assessment_basis_urls: [first], inconclusive_source_count: 1, omitted_source_count: 0},
+  ];
+  const result = {checks: [
+    {result: {url: first, kind: "news", outcome: "SUPPORTED", evidence}},
+    {result: {url: second, kind: "news", outcome: "INCONCLUSIVE", evidence}},
+  ]};
+  assert.equal(summarize(result).label, "Coerente con estratto");
+  assert.equal(summarize(result).status, "PARTIAL");
+  assert.equal(summarize(result, second).status, "INCONCLUSIVE");
+  assert.equal(summarize(result, second).label, "Notizia non verificata");
+  assert.equal(summarize({checks: [result.checks[1]]}).status, "INCONCLUSIVE");
+});

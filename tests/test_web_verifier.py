@@ -480,6 +480,34 @@ def test_accept_language_header_is_fixed_and_validated(
 AMAZON_URL = "https://www.amazon.it/dp/B0DKF9NCN1"
 
 
+def test_public_amazon_title_is_scoped_to_selected_primary_product(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    html = amazon_page() + '<span id="productTitle">ESP32 DevKit CP2102</span>'
+    serve_amazon(monkeypatch, html)
+    result = web.verify_url(AMAZON_URL, "product_price", "10.99 EUR")
+    assert (
+        next(e for e in result.evidence if e.get("source") == "amazon_public_buybox")[
+            "product_title"
+        ]
+        == "ESP32 DevKit CP2102"
+    )
+
+
+def test_hidden_amazon_title_is_not_presented_as_identified_product(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    html = amazon_page() + '<span id="productTitle" hidden>Wrong product</span>'
+    serve_amazon(monkeypatch, html)
+    result = web.verify_url(AMAZON_URL, "product_price", "10.99 EUR")
+    assert (
+        next(e for e in result.evidence if e.get("source") == "amazon_public_buybox")[
+            "product_title"
+        ]
+        == ""
+    )
+
+
 def amazon_page(
     stock: str = "Disponibilità immediata",
     price: str = "10,99€",

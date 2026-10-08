@@ -112,7 +112,7 @@ test("product list item citations share scope across nested paragraphs", () => {
 
 test("Amazon product URL variants deduplicate by marketplace and ASIN", () => {
   const first = destinationKey("https://www.amazon.com/dp/B0ABC12345?tag=one#reviews");
-  const tracked = destinationKey("https://amazon.com/gp/product/b0abc12345?psc=1&ref_=abc");
+  const tracked = destinationKey("https://amazon.com/gp/product/b0abc12345?tag=one&ref_=abc");
   const otherProduct = destinationKey("https://www.amazon.com/gp/aw/d/B0XYZ98765?tag=one");
   const otherMarketplace = destinationKey("https://www.amazon.co.uk/dp/B0ABC12345?tag=one");
 
@@ -120,6 +120,18 @@ test("Amazon product URL variants deduplicate by marketplace and ASIN", () => {
   assert.equal(tracked, first);
   assert.notEqual(otherProduct, first);
   assert.notEqual(otherMarketplace, first);
+  assert.notEqual(destinationKey("https://amazon.com/dp/B0ABC12345?psc=1"), first);
+  assert.notEqual(destinationKey("https://amazon.com/dp/B0ABC12345?seller=A"), destinationKey("https://amazon.com/dp/B0ABC12345?seller=B"));
+});
+
+test("same ASIN with different sellers retains separate offer buttons in one block", () => {
+  const item = {tagName: "LI", textContent: "Due venditori propongono lo stesso prodotto: ogni offerta va controllata separatamente.", closest: () => null, querySelector: () => null};
+  const anchors = ["https://amazon.it/dp/B0ABC12345?seller=A", "https://amazon.it/gp/product/B0ABC12345?seller=B"].map(href => ({
+    href, tagName: "A", closest: selector => selector === "li" ? item : null,
+  }));
+  item.contains = node => anchors.includes(node);
+  const root = {querySelectorAll: selector => selector === "a[href]" ? anchors : [item]};
+  assert.deepEqual(itemTargets(root), anchors);
 });
 
 test("normalizeChecks exposes nested price evidence to cards and correction drafts", () => {

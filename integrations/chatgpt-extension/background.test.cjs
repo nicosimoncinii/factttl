@@ -44,7 +44,10 @@ function harness(fetcher, settings = {}) {
       onMessage: {addListener: fn => { handler = fn; }},
     },
     action: {onClicked: {addListener: () => {}}},
-    tabs: {sendMessage: async (tabId, message) => broadcasts.push({tabId, message})},
+    tabs: {
+      ...(settings.merchant ? {create: async value => {broadcasts.push({created: value}); return {id: 99};}, remove: async id => broadcasts.push({removed: id})} : {}),
+      sendMessage: async (tabId, message) => message.type === "READ_PRODUCT_OFFER" && settings.merchant ? settings.merchant : broadcasts.push({tabId, message}),
+    },
     storage: {local: {
       setAccessLevel: async value => { access = settings.firefox ? value : value.accessLevel; },
       get: async key => ({[key]: storage[key]}),
@@ -58,7 +61,7 @@ function harness(fetcher, settings = {}) {
     ...(settings.firefox ? {browser: chrome} : {}),
     ...(settings.indexedDB ? {indexedDB: settings.indexedDB} : {}),
     ...(settings.locale ? {navigator: {language: settings.locale}} : {}),
-    URL, AbortController, DOMException, clearTimeout, TextDecoder, Uint8Array,
+    URL, URLSearchParams, AbortController, DOMException, clearTimeout, TextDecoder, Uint8Array,
     setTimeout: (fn, delay) => setTimeout(fn, delay < 5000 ? Math.min(delay, 5) : delay),
     fetch: async (url, init) => { requests.push({url, init}); return fetcher(url, init); },
   });
@@ -75,11 +78,37 @@ async function ready(h) {
   await h.send({type: "SET_CHAT_STATE", payload: {chatId: payload.chatId, enabled: true}});
 }
 
+test("browser offer is read in an inactive owned tab and accompanies only the requested product", async () => {
+  const offer = {url: "https://www.amazon.it/dp/B0DKF9NCN1", asin: "B0DKF9NCN1", status: "OBSERVED", source: "browser_rendered_amazon", scope: "browser_current_offer", observed_at: new Date().toISOString(), title: "ESP32", availability: "available", price: "10.99", currency: "EUR", list_price: null};
+  const h = harness(null, {merchant: offer}); await ready(h);
+  const result = await h.send({type: "VERIFY_MESSAGE", payload: {...payload, links: [offer.url]}});
+  assert.equal(result.ok, true);
+  const request = h.requests.find(value => value.url.endsWith("/jobs"));
+  assert.equal(JSON.parse(request.init.body).browser_observations[0].price, "10.99");
+  assert.equal(h.broadcasts.find(value => value.created).created.active, false);
+  assert.equal(h.broadcasts.find(value => value.removed).removed, 99);
+});
+
+test("memory context requires an enabled trusted chat and stays on the authenticated loopback bridge", async () => {
+  const h = harness(async () => new Response(JSON.stringify({findings: []}))); await ready(h);
+  const result = await h.send({type: "GET_MEMORY_CONTEXT", payload: {chatId: payload.chatId, query: "ESP32 prezzo"}});
+  assert.equal(result.ok, true);
+  const request = h.requests[0]; assert.equal(request.url, "http://127.0.0.1:8765/context");
+  assert.equal(JSON.parse(request.init.body).query, "ESP32 prezzo");
+  assert.equal(request.init.headers.Authorization, `Bearer ${TOKEN}`);
+  await h.send({type: "SET_CHAT_STATE", payload: {chatId: payload.chatId, enabled: false}});
+  const blocked = await h.send({type: "GET_MEMORY_CONTEXT", payload: {chatId: payload.chatId, query: "ESP32"}});
+  assert.equal(blocked.ok, false); assert.equal(h.requests.length, 1);
+});
+
 test("manifest has a stable extension origin and minimal access", () => {
   const hex = createHash("sha256").update(Buffer.from(manifest.key, "base64")).digest("hex").slice(0, 32);
   assert.equal([...hex].map(c => String.fromCharCode(97 + parseInt(c, 16))).join(""), ID);
   assert.deepEqual(manifest.permissions, ["storage"]);
-  assert.deepEqual(manifest.host_permissions, ["http://127.0.0.1:8765/*"]);
+  assert.equal(manifest.host_permissions[0], "http://127.0.0.1:8765/*");
+  assert.equal(manifest.host_permissions.length, 13);
+  for (const value of manifest.host_permissions.slice(1)) assert.match(value, /^https:\/\/(?:www\.)?amazon\.(?:it|com|co\.uk|de|fr|es)\/\*$/);
+  assert.equal(manifest.content_scripts[1].js[0], "merchant.js");
   assert.deepEqual(manifest.content_scripts[0].matches, [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",

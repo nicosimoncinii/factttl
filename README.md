@@ -53,6 +53,8 @@ never treated as evidence. Discovery is disabled by default; read the
 [privacy and network behavior](docs/privacy-and-network.md) before enabling it.
 The local model supports a bounded CPU profile; see
 [hardware and measured limits](docs/local-engine-hardware.md).
+See [useful verification and measured public-source checks](docs/useful-verification.md)
+for scoped news verdicts, real NASA examples, and current discovery limitations.
 Green applies only to narrowly covered properties; an accessible URL never
 proves a whole answer. The extension does not give the model hidden context or
 disable a separately selected ChatGPT plugin. A correction can be copied to the

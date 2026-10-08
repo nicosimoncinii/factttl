@@ -42,14 +42,17 @@ separate from truth. An optional installed local Ollama model can compare the
 URL-associated assertion with the fetched source; definitive results require
 validated quotations. The UI calls this source consistency, not independent
 confirmation. Without a configured model, the news remains unverified.
-Automatic discovery of independent sources for claims without a URL is not
-implemented.
+Optional public Bing discovery finds candidate sources for recognized news
+assertions without a URL; domain diversity does not establish independence.
 
 The local verifier stores evidence and prior corrections across chats. Prior
 corrections prevent an unqualified green status. The extension does not read
 ChatGPT's private conversation APIs, change model weights, or transmit hidden
-instructions to the model. **Porta la correzione all'AI** copies a correction for
-you to paste. It never submits a message. A separately selected FactTTL plugin
+instructions to the model. With **Memoria attiva**, it appends relevant local
+findings as a visible quoted block to a message the user chooses to send,
+including expiry and source scope. It never initiates a message on its own.
+Disabling the switch removes its own unsent block. See [prompt memory](prompt-memory.md).
+A separately selected FactTTL plugin
 has its own tool availability and is not disabled by this browser switch.
 
 ## Distribution

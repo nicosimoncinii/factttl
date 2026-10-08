@@ -76,6 +76,39 @@ test("external discovery details disclose Bing queries and exclude snippets as p
   assert.equal(state.badge.dataset.status, "INCONCLUSIVE");
 });
 
+test("product sheet uses source identity and separates observed and asserted prices", () => {
+  const {api, document} = loadItemUI();
+  const anchor = new FakeElement("a"); anchor.href = "https://shop.example/product"; anchor.textContent = "Apri su Amazon";
+  document.body.append(anchor);
+  const state = api.create(anchor, () => {});
+  api.update(state, {ok: true, result: {discovery: {enabled: true, queries_sent: 0}, checks: [
+    {result: {url: anchor.href, kind: "product_price", outcome: "CONTRADICTED", expected_value: "9 EUR", observed_value: "12 EUR", evidence: [{product_title: "ESP32 DevKit C"}]}},
+    {result: {url: anchor.href, kind: "product_availability", outcome: "SUPPORTED", expected_value: "true", observed_value: "available"}},
+    {result: {url: anchor.href, kind: "link_available", outcome: "SUPPORTED"}},
+    {result: {url: anchor.href, kind: "product_discount", outcome: "INCONCLUSIVE", expected_value: "true"}},
+  ]}});
+  state.badge.listeners.click();
+  const rendered = textIn(document.body.children.at(-1));
+  assert.match(rendered, /ESP32 DevKit C/);
+  assert.match(rendered, /Prezzo letto: 12,00\s*€/);
+  assert.match(rendered, /Nella risposta: 9,00\s*€/);
+  assert.match(rendered, /Disponibile sulla pagina pubblica/);
+  assert.doesNotMatch(rendered, /Apertura del link/);
+  assert.doesNotMatch(rendered, /Ricerca esterna Bing|Nella risposta: true/);
+  assert.match(rendered, /Nella risposta: In sconto/);
+  assert.equal(state.badge.textContent, "! Prezzo diverso");
+});
+
+test("failed connection offers recovery without claiming link accessibility", () => {
+  const {api, document} = loadItemUI();
+  const paragraph = new FakeElement("p"); paragraph.textContent = "Messaggio da verificare"; document.body.append(paragraph);
+  const state = api.create(paragraph, () => {});
+  api.update(state, {ok: false, error: "UNAUTHORIZED"}); state.badge.listeners.click();
+  const rendered = textIn(document.body.children.at(-1));
+  assert.match(rendered, /Importa nuovamente il file di configurazione/);
+  assert.doesNotMatch(rendered, /Link accessibile|La pagina si apre/);
+});
+
 test("an unlinked paragraph can display evidence from discovered publisher URLs", () => {
   const {api, document} = loadItemUI();
   const paragraph = new FakeElement("p"); paragraph.textContent = "La notizia annuncia un evento pubblico da verificare.";
@@ -109,12 +142,12 @@ test("long evidence has a concise preview and an accessible complete disclosure"
   const dialog = document.body.children.at(-1);
   function descendants(node) { return node.children.flatMap(child => [child, ...descendants(child)]); }
   const all = descendants(dialog);
-  const disclosures = all.filter(node => node.tagName === "DETAILS");
-  assert.equal(disclosures.length, 3);
+  const disclosures = all.filter(node => node.tagName === "DETAILS" && node.className === "factttl-full-evidence");
+  assert.equal(disclosures.length, 2);
   assert.ok(disclosures.every(node => node.children[0].tagName === "SUMMARY" && node.children[0].textContent === "Leggi prove complete"));
   const visibleQuotes = all.filter(node => node.tagName === "BLOCKQUOTE" && node.parentElement.tagName !== "DETAILS");
-  assert.ok(visibleQuotes[0].textContent.length <= 241);
-  assert.ok(visibleQuotes[1].textContent.length <= 351);
+  assert.equal(visibleQuotes.length, 1); // Do not repeat source excerpts when quoted evidence is present.
+  assert.ok(visibleQuotes[0].textContent.length <= 351);
   assert.equal(disclosures[0].children[1].textContent, quote);
 });
 
@@ -182,8 +215,8 @@ test("opening an updated badge reads the same state object and current evidence"
   const dialog = document.body.children.at(-1);
   const rendered = textIn(dialog);
   assert.equal(state.badge.dataset.status, "CONTRADICTED");
-  assert.match(rendered, /Prezzo letto: 10\.99 EUR/);
-  assert.match(rendered, /Nella risposta era indicato 9\.99 EUR/);
+  assert.match(rendered, /Prezzo letto: 10,99\s*€/);
+  assert.match(rendered, /Nella risposta: 9,99\s*€/);
   assert.match(rendered, /Paese scelto: Italia/);
   assert.match(rendered, /marketplace della fonte è diverso/);
   assert.equal(retried, false);

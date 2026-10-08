@@ -125,6 +125,60 @@ def test_valid_scoped_assessment(monkeypatch: pytest.MonkeyPatch, outcome: str) 
     assert SOURCE not in str(requests[0])
 
 
+def test_current_claim_receives_publication_and_check_time_not_just_fresh_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed = timestamp()
+    published = "2024-01-01T00:00:00+00:00"
+    requests = serve(monkeypatch, output=envelope(assessment(outcome="INCONCLUSIVE")))
+    result = call(
+        claim_text="Il presidente attuale è quello citato oggi.",
+        source_observed_at=observed,
+        source_published_at=published,
+    )
+    payload = requests[1][1]
+    messages = payload["messages"]
+    assert isinstance(messages, list)
+    source = json.loads(messages[1]["content"])["source"]
+    assert source["published_at"] == published
+    assert source["observed_at"] == source["reference_time"] == observed
+    assert "not that the content is current" in messages[0]["content"]
+    assert "current role at reference_time" in messages[0]["content"]
+    assert result["outcome"] == "INCONCLUSIVE"
+
+
+def test_historical_claim_is_not_rejected_because_publication_is_old(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    quote = "Nel 2024 l'azienda ha annunciato il lancio per il 12 ottobre 2026."
+    requests = serve(
+        monkeypatch,
+        output=envelope(
+            assessment(citations=[{"source_id": "source-1", "quote": quote}])
+        ),
+    )
+    result = call(
+        claim_text=quote, source_text=quote, source_published_at="2024-01-01T00:00:00Z"
+    )
+    assert result["outcome"] == "SUPPORTED"
+    assert result["source_published_at"] == "2024-01-01T00:00:00+00:00"
+    assert "dated historical claims" in str(requests[1][1]["messages"])
+    assert "arbitrary publication-age cutoff" in str(requests[1][1]["messages"])
+
+
+@pytest.mark.parametrize(
+    "publication", ["2024-01-01", "2024-01-01T00:00:00", "invalid", "x" * 129, True]
+)
+def test_invalid_publication_timestamp_never_sent_to_model(
+    monkeypatch: pytest.MonkeyPatch,
+    publication: object,
+) -> None:
+    requests = serve(monkeypatch)
+    result = call(source_published_at=publication)
+    assert result["error_reason"] == "invalid_source_publication_time"
+    assert requests == []
+
+
 @pytest.mark.parametrize(
     "model",
     ["qwen3:cloud", "x-cloud", "https://remote/model", "x\nmalicious", "x" * 129],

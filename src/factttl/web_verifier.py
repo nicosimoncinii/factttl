@@ -459,6 +459,7 @@ class _AmazonParser(HTMLParser):
         self.canonicals: set[str] = set()
         self.root_asins: set[str] = set()
         self.values: dict[str, list[str]] = {
+            "title": [],
             "availability": [],
             "price": [],
             "list": [],
@@ -490,7 +491,13 @@ class _AmazonParser(HTMLParser):
             or "display:none" in style
             or "visibility:hidden" in style
         )
-        capture = "availability" if identifier == "availability" else None
+        capture = (
+            "title"
+            if identifier == "productTitle"
+            else "availability"
+            if identifier == "availability"
+            else None
+        )
         if identifier in _AMAZON_PRICE_ROOTS:
             root_asin = attributes.get("data-csa-c-asin")
             if root_asin:
@@ -591,6 +598,9 @@ def _amazon_observation(
             "provider": "live_public_web",
             "trust": "untrusted_page_content",
             "asin": requested,
+            "product_title": parser.values["title"][0][:180]
+            if len(parser.values["title"]) == 1
+            else "",
             "context": "public anonymous page; no personalized delivery location",
         }
     )
@@ -814,6 +824,15 @@ def verify_url(
     if len(products) != 1:
         return finish(
             "INCONCLUSIVE", "A single unambiguous structured product was not found"
+        )
+    product_name = products[0].get("name")
+    if isinstance(product_name, str) and product_name.strip():
+        evidence.append(
+            {
+                "provider": "live_public_web",
+                "source": "structured_product_name",
+                "product_title": product_name.strip()[:180],
+            }
         )
     offers_value = products[0].get("offers")
     offers = [offers_value] if isinstance(offers_value, dict) else offers_value

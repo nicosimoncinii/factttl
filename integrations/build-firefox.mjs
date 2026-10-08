@@ -12,7 +12,7 @@ delete manifest.key;
 delete manifest.minimum_chrome_version;
 manifest.background = {scripts: ["background.js"]};
 await mkdir(target, {recursive: true});
-for (const name of ["background.js", "item-ui.js", "content.js", "content.css", "options.js", "options.html", "options.css"]) {
+for (const name of ["background.js", "item-ui.js", "memory.js", "merchant.js", "content.js", "content.css", "options.js", "options.html", "options.css"]) {
   await copyFile(join(source, name), join(target, name));
 }
 await writeFile(join(target, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");

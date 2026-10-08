@@ -32,7 +32,8 @@
       if (productURL) {
         // An estimate is not a false assertion, but a cart still needs updating
         // when the live price changes its budget. Keep that distinction visible.
-        const estimates = [...String(entry.text || "").matchAll(/(?<![\d.,])(?<!\d\s)(\d{1,6}(?:[.,]\d{1,2})?)\s*(?:€|EUR\b)(?!\d|[.,]\d)/g)];
+        const estimateText = String(entry.text || "");
+        const estimates = [...estimateText.matchAll(/(?<![\d.,])(\d{1,6}(?:[.,]\d{1,2})?)\s*(?:€|EUR\b)(?!\d|[.,]\d)/g)].filter(match => !/(?:^|\s)\d+\s+$/.test(estimateText.slice(0, match.index)));
         const price = (entry.response.result?.checks || []).map(c => c.result || c).find(c => safeURL(c.url) === safeURL(entry.url) && c.kind === "product_price" && c.outcome === "SUPPORTED" && !c.expected_value && /^\d+(?:[.,]\d{1,2})? EUR$/.test(c.observed_value || "") && Date.parse(c.observed_at) <= now + 5000 && Date.parse(c.observed_at) >= now - 300000 && (c.evidence || []).some(e => e.provider === "live_public_web"));
         if (price && estimates.length === 1 && /indicativ|orientativ|previsto|estimated|estimate|circa|about|[~≈]/i.test(entry.text || "") && Number(estimates[0][1].replace(",", ".")) !== Number(price.observed_value.split(" ")[0].replace(",", "."))) {
           const key = `${entry.url}:product_estimate_update`;

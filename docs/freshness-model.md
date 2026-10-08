@@ -64,7 +64,7 @@ Resolve one effective policy in this order. At each scope, a TTL and an explicit
 
 An explicit disable at either scope means routine review is `NOT_REQUIRED`, unless a higher-priority per-claim TTL overrides a category disable. A missing category or missing TTL for a non-stable claim must never silently imply `STABLE` or `NOT_REQUIRED`. An explicit TTL is sufficient to evaluate a claim even if its temporal class is `UNKNOWN`.
 
-Category suggestions and classifier outputs do not override an explicit caller policy. The concrete policy file syntax and category defaults are defined separately from this decision procedure.
+Category suggestions and classifier outputs do not override an explicit caller policy. The local TOML schema, duration syntax, and loader API are documented in [policy configuration](policy-config.md). No category TTL is implicitly enabled by the loader.
 
 ## Status semantics and decision order
 

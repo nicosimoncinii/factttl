@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>FactTTL · Anteprima dei pulsanti</title>
+  <link rel="stylesheet" href="/content.css">
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100dvh;
+      background:
+        radial-gradient(ellipse 80% 42% at 50% -8%, #dceaf8 0, transparent 58%),
+        #f5f8fc;
+      color: #193b61;
+      font: 16px/1.6 "Segoe UI", system-ui, sans-serif;
+    }
+    main { width: min(100% - 40px, 760px); margin: 0 auto; padding: 48px 0 120px; }
+    .kicker { margin: 0 0 10px; color: #2764a5; font-size: 11px; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 0 0 14px; font: 400 clamp(32px, 5vw, 46px)/1.1 Georgia, "Times New Roman", serif; letter-spacing: -.04em; }
+    aside {
+      margin: 0 0 36px;
+      padding: 16px 18px;
+      border: 1px solid #d9e2ee;
+      border-radius: 16px;
+      background: #fff;
+      color: #4c6079;
+      box-shadow: 0 12px 40px #193b6112;
+    }
+    aside a { color: #2764a5; }
+    .hosts { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
+    .hosts li { padding: 6px 11px; border: 1px solid #d9e2ee; border-radius: 999px; background: #f5f8fc; font-size: 12px; font-weight: 650; }
+    .turn { margin: 28px 0; padding: 22px 22px 12px; border: 1px solid #d9e2ee; border-radius: 18px; background: #fff; }
+    .role { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #596d85; font-weight: 700; }
+    .answer { padding: 12px 0 4px; }
+    .answer p { margin: 0; }
+    a { color: #2764a5; }
+    .question {
+      margin: 32px 0 0;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: #e8f0fa;
+      color: #193b61;
+    }
+    footer { margin-top: 28px; color: #596d85; font-size: 13px; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+  <script src="/demo.js" defer></script>
+  <script src="/item-ui.js" defer></script>
+  <script src="/content.js" defer></script>
+</head>
+<body>
+  <main>
+    <p class="kicker">Anteprima locale</p>
+    <h1>Un controllo vicino a ogni riferimento</h1>
+    <aside>
+      <strong>Non è ChatGPT e non installa l’estensione.</strong>
+      Il primo esempio mostra un controllo realmente eseguito sul link pubblico; il secondo mostra il limite sui fatti senza fonti.
+      La stessa interfaccia si applica a ChatGPT, Claude e Gemini.
+      <a href="/settings">Apri le impostazioni</a>
+      <ul class="hosts">
+        <li>ChatGPT</li>
+        <li>Claude</li>
+        <li>Gemini</li>
+      </ul>
+    </aside>
+    <div class="question">Mi trovi una scheda ESP32 su Amazon?</div>
+    <section class="turn">
+      <div class="role">Risposta di esempio</div>
+      <div data-markdown-text-style="assistant-message" class="answer" data-demo="product">
+        <p>La <a href="https://www.amazon.it/dp/B0DKF9NCN1">scheda ESP32</a> è disponibile a 1,00 EUR ed è in sconto.</p>
+      </div>
+    </section>
+    <section class="turn">
+      <div class="role">Notizia di esempio</div>
+      <div data-markdown-text-style="assistant-message" class="answer">
+        <p>Notizia: <a href="https://ollama.com/blog/structured-outputs">Ollama</a> supporta output strutturati JSON mediante uno schema.</p>
+      </div>
+    </section>
+    <div class="question">Qual è il nome del direttore di questa società?</div>
+    <section class="turn">
+      <div class="role">Risposta di esempio</div>
+      <div data-markdown-text-style="assistant-message" class="answer" data-demo="generic">
+        <p>Il direttore attuale di questa società si chiama Mario Rossi.</p>
+      </div>
+    </section>
+    <footer>Attiva FactTTL con l’interruttore in basso a sinistra. Clicca un pulsante di stato per aprire le prove. Spegnendolo, i pulsanti spariscono.</footer>
+  </main>
+</body>
+</html>

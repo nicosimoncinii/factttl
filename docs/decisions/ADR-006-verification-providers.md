@@ -1,6 +1,6 @@
 # ADR-006: Verification provider architecture
 
-- **Status:** Proposed; provider contract to be settled in milestone 0.2.
+- **Status:** Accepted for personal testing; future providers may extend the contract.
 - **Date:** 2026-10-02
 
 ## Context
@@ -19,4 +19,10 @@ Keep provider calls behind an optional adapter contract. Provider selection is e
 
 ## Consequences
 
-The abstraction has some design cost and should remain small. Provider outcomes are evidence assessments, not truth guarantees. Selection of an initial adapter is deferred until privacy, cost, and source criteria are evaluated.
+The abstraction has some design cost and should remain small. Provider outcomes
+are evidence assessments, not truth guarantees. The first implementation uses
+explicitly enabled, bounded public HTTPS retrieval without credentials or a
+paid search vendor. Structured merchant data supports narrow product-property
+comparisons; semantic claim assessments remain attributed to the calling AI
+and require a quote validated against freshly fetched source text. SQLite retains
+contradictions across chats and errors. The offline freshness core is unchanged.

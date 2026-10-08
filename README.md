@@ -4,7 +4,53 @@
 
 FactTTL is an early-stage project to build a model-agnostic freshness layer for AI answers. It is designed to identify claims whose usefulness can expire, apply configurable time-to-live (TTL) policies, and report when claims should be checked again.
 
-> **Project status: early development.** The minimal Python package scaffold is in place. No scanner, verifier, CLI, SDK, or integrations are implemented yet.
+> **Project status: personal testing.** Freshness evaluation, public HTTPS source checks, evidence-backed product/link assessments, source-anchored AI assessments, and persistent correction memory are implemented. General autonomous fact extraction, universal truth verification, account-isolated hosting, and stable SDK guarantees are not implemented.
+
+## Live verification and correction memory
+
+Start the MCP server with `--enable-verification` to enable live checks and a
+local SQLite history. It can compare product availability and prices with
+explicit structured source data, detect broken links, collect news publication
+dates, and remember user-reported corrections. A later FactTTL chat can recall
+those corrections before repeating an earlier assertion.
+
+For general claims, the AI compares a claim with source evidence; FactTTL fetches
+the source and checks that the supplied excerpt occurs in its extracted text.
+That assessment remains fallible and source-relative. An inaccessible source,
+CAPTCHA or expired check never becomes a factual verdict. A source's publication
+date measures age, not truth. See [verification and memory](docs/verification-model.md).
+
+The plugin cannot force every ChatGPT conversation to consult it or rewrite
+ChatGPT's model weights. Select FactTTL in the conversations where you want
+these checks. The store is shared by clients of this personal local server;
+it is not a multi-user service.
+
+## Automatic buttons in ChatGPT
+
+The experimental [Firefox/Chrome/Edge extension](integrations/chatgpt-extension/README.md)
+adds a per-conversation switch and a colored status button next to each distinct
+linked source, without an `@FactTTL` mention. It automatically checks
+recognized URL-associated prices, stock and discount assertions against public
+sources. Open a status button to inspect evidence and unchecked parts. Turning
+the switch off removes the buttons and cancels pending checks.
+
+Start the local authenticated bridge with
+`python -m factttl.browser_bridge`, or use `scripts/Start-FactTTL-Browser.ps1`
+on this Windows test installation. Load the unpacked extension and import the
+generated `.factttl/extension-config.json` in its options. The bridge shares the
+existing local correction store; it requires no OpenAI API key.
+
+An optional local Ollama model compares URL-associated news assertions with
+fetched source text, using validated quotations. Its result describes consistency
+with that source, not independently established truth. Configure an installed
+model with `--news-model`; see the [news provider](integrations/chatgpt-extension/NEWS-PROVIDER.md).
+Arbitrary prose without sources and ambiguous associations remain unverified.
+Green applies only to narrowly covered properties; an accessible URL never
+proves a whole answer. The extension does not give the model hidden context or
+disable a separately selected ChatGPT plugin. A correction can be copied to the
+chat explicitly; automatic model-side enforcement requires a supported host
+integration. This extension is not installed in Codex's internal browser or
+ChatGPT's desktop app.
 
 ## What is FactTTL?
 
@@ -28,9 +74,9 @@ Freshness status: STALE (as of 2026-10-22)
 Truth status:     UNKNOWN
 ```
 
-The dates and output above illustrate the planned model only; they are not produced by a working tool.
+The current CLI can produce the freshness status, timestamps, TTL, and rationale fields in this example. The `Truth status: UNKNOWN` line is illustrative only: FactTTL does not determine whether a claim is true.
 
-## How it is planned to work
+## How the full product is planned to work
 
 ```text
 Input text or structured claims
@@ -75,37 +121,53 @@ Illustrative defaults only; users must be able to override them for their domain
 
 An expired TTL means “review due,” not “false.”
 
-## Planned CLI (not implemented)
+## Local CLI
 
 ```text
-factttl scan answer.md
-factttl verify answer.md
+factttl scan claims.json [--policy factttl.toml] [--format text|json]
 ```
 
-`scan` is planned to identify claim candidates and report temporal sensitivity. `verify` is planned to request evidence only for claims that policy says need review. These commands are target UX, not usable commands today.
+`scan` evaluates structured claim candidates supplied by the caller at an
+explicit timestamp. It does not extract claims from prose or verify them
+against evidence. The JSON input format, policy option, output schema, and exit
+behavior are described in the [CLI guide](docs/cli.md). A Python report API is
+also available; see [in-memory reports](docs/reports.md) and the
+[Python API guide](docs/python-api.md). The optional
+[MCP server](docs/mcp.md) exposes the same deterministic evaluation to
+compatible agent clients.
 
 ## Planned architecture
 
-The first release is intended as a local-first Python library and CLI, with no server or required cloud account. Its core model and policy engine should remain independent of any LLM, search engine, or provider. The proposed tool choices are in [the technology stack](docs/tech-stack.md); see also [Architecture](docs/architecture.md) and the [decision records](docs/decisions/).
+The current release is a local-first Python library and CLI, with an optional MCP server for agent clients. The core policy engine remains independent of any LLM, search engine, or provider. The proposed tool choices are in [the technology stack](docs/tech-stack.md); see also [Architecture](docs/architecture.md) and the [decision records](docs/decisions/).
+
+For the implemented core's current data handling and the requirements for future providers, see [Privacy and network behavior](docs/privacy-and-network.md).
 
 ## Roadmap
 
-- **0.1 — Freshness foundation:** accept text and structured claim candidates; classify temporal sensitivity and category; apply TTL policies; produce a report.
-- **0.2 — Verification providers:** define a provider contract and add explicitly configured verification adapters.
-- **0.3 — CLI:** deliver a cross-platform CLI for scanning, policy inspection, and report output.
-- **0.4 — SDK:** expose a stable Python API after the core model has been exercised.
-- **0.5 — Integration layer:** explore MCP and agent-tool adapters; keep optional and provider-neutral.
+- **0.1 — Freshness foundation:** deterministic evaluation, local category policies, in-memory reports, and a CLI for structured caller-supplied claims are implemented.
+- **0.2 — Verification providers:** opt-in public HTTPS checks and persistent evidence/correction history are available for personal testing; broader providers remain future work.
+- **0.3 — CLI:** structured-claim scanning with text and JSON reports is implemented; policy inspection and report comparison remain future work.
+- **0.4 — SDK:** a typed Python embedding API is available; compatibility guarantees remain pre-1.0.
+- **0.5 — Integration layer:** a read-only MCP adapter is available; other agent adapters and managed ChatGPT hosting remain future work.
 - **1.0 — Stable freshness engine:** versioned model and policy semantics, documented limitations, and a compatibility commitment.
 
 Future shareable features include a freshness summary/badge and `factttl diff` for changes in status between reports. These are roadmap ideas, not commitments or existing features.
 
 ## Integrations
 
-Potential future integration points include Claude Code, Codex, Cursor, Gemini CLI, OpenCode, MCP, a REST API, and Python/JavaScript SDKs. None is implemented. Integrations should call the same model-agnostic core rather than own freshness semantics.
+The optional MCP adapter works with compatible local stdio clients and with
+clients that can reach a secured Streamable HTTP endpoint. To connect ChatGPT,
+you must run the HTTP transport somewhere ChatGPT can reach, or use an
+appropriate private MCP tunnel; this repository does not host or deploy that
+endpoint for you. See the [MCP integration guide](docs/mcp.md) and OpenAI's
+[current guide for custom MCP servers](https://developers.openai.com/plugins/build/app-quickstart).
+Other potential integration points include Claude Code, Codex, Cursor, Gemini
+CLI, and OpenCode. Integrations should call the same model-agnostic core rather
+than own freshness semantics.
 
 ## Contributing
 
-The project is in design stage. Read [CONTRIBUTING.md](CONTRIBUTING.md), [the roadmap](ROADMAP.md), and the open design issues before proposing implementation work. The initial backlog is tracked in [docs/backlog.md](docs/backlog.md).
+The project is early-stage and its API may change before 1.0. Read [CONTRIBUTING.md](CONTRIBUTING.md), [the roadmap](ROADMAP.md), and the open issues before proposing implementation work. The initial backlog is tracked in [docs/backlog.md](docs/backlog.md).
 
 ## License
 

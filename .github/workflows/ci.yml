@@ -8,7 +8,10 @@ on:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -22,7 +25,10 @@ jobs:
         run: uv python install 3.11
 
       - name: Install project and development dependencies
-        run: uv sync --locked
+        run: uv sync --locked --extra mcp
+
+      - name: Build distributions
+        run: uv build
 
       - name: Lint
         run: uv run ruff check .
@@ -31,7 +37,18 @@ jobs:
         run: uv run ruff format --check .
 
       - name: Type check
-        run: uv run mypy src
+        run: uv run mypy src tests
 
       - name: Run tests
         run: uv run pytest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test browser integration
+        run: node --test tests/test_extension_content.cjs tests/test_extension_item_ui.cjs tests/test_extension_item_state.cjs tests/test_extension_options.cjs integrations/chatgpt-extension/background.test.cjs
+
+      - name: Regenerate Firefox package
+        run: node integrations/build-firefox.mjs

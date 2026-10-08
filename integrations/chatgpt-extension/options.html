@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>FactTTL · Impostazioni</title>
+  <link rel="stylesheet" href="options.css">
+  <script src="options.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top" data-i18n-aria-label="brandLabel" aria-label="FactTTL, inizio">
+        <span class="brand-mark" aria-hidden="true">F</span>
+        <span>FactTTL</span>
+      </a>
+      <span class="local-tag"><span class="local-dot" aria-hidden="true"></span><span data-i18n="localTag">Elaborazione locale</span></span>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="intro" aria-labelledby="page-title">
+      <p class="eyebrow" data-i18n="eyebrow">Il contesto cambia</p>
+      <h1 id="page-title" data-i18n="headline">Risposte più attente a ciò che cambia.</h1>
+      <p class="intro-copy" data-i18n="intro">FactTTL controlla in locale alcune informazioni aggiornabili nelle risposte di ChatGPT, Claude e Gemini. Sei tu a decidere in quali conversazioni attivarlo.</p>
+      <ul class="support-row" aria-label="Piattaforme supportate">
+        <li data-host="chatgpt"><span class="support-dot" aria-hidden="true"></span>ChatGPT</li>
+        <li data-host="claude"><span class="support-dot" aria-hidden="true"></span>Claude</li>
+        <li data-host="gemini"><span class="support-dot" aria-hidden="true"></span>Gemini</li>
+      </ul>
+      <p class="browser-note" data-i18n="browserNote">Funziona in Chrome, Edge e Firefox. Attivalo solo nella conversazione che stai leggendo.</p>
+    </section>
+
+    <section class="connect-card" aria-labelledby="connect-title">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow" data-i18n="stepOne">Passo 1 · Collegamento</p>
+          <h2 id="connect-title" data-i18n="connectTitle">Collega FactTTL</h2>
+        </div>
+        <div id="connection-state" class="connection-state" data-state="checking" role="status" aria-live="polite">
+          <span class="state-dot" aria-hidden="true"></span>
+          <span id="connection-label" data-i18n="checking">Controllo in corso</span>
+        </div>
+      </div>
+      <p class="card-copy" data-i18n="connectCopy">Avvia FactTTL sul tuo computer, poi importa il file di configurazione che genera. Il file collega questo browser al servizio sul tuo PC.</p>
+      <div id="news-engine-state" class="engine-state" hidden role="status" aria-live="polite">
+        <span class="engine-icon" aria-hidden="true">N</span>
+        <div>
+          <span class="engine-kicker" data-i18n="newsEngineTitle">Controllo delle notizie</span>
+          <strong id="news-engine-label"></strong>
+          <p id="news-engine-description"></p>
+        </div>
+      </div>
+      <div class="connect-actions">
+        <button id="import-config" class="button button-primary" type="button">
+          <span data-i18n="connectButton">Collega questo browser</span>
+          <span class="button-arrow" aria-hidden="true">↗</span>
+        </button>
+        <input id="config-file" type="file" accept=".json,application/json" hidden>
+        <button id="retry-health" class="button button-secondary" type="button" data-i18n="retry">Riprova il collegamento</button>
+      </div>
+      <p id="status" class="status-message" role="status" aria-live="polite"></p>
+      <details class="advanced">
+        <summary data-i18n="advancedTitle">Problemi con il file? Usa il metodo manuale</summary>
+        <p data-i18n="advancedCopy">Incolla il token locale mostrato dal servizio FactTTL. Non usare una chiave API OpenAI.</p>
+        <form id="configuration" class="manual-form">
+          <label for="token" data-i18n="tokenLabel">Token locale FactTTL</label>
+          <div class="manual-row">
+            <input id="token" type="password" required minlength="16" maxlength="256" autocomplete="off" spellcheck="false" data-i18n-placeholder="tokenPlaceholder" placeholder="Incolla il token locale">
+            <button class="button button-secondary" type="submit" data-i18n="saveToken">Salva token</button>
+          </div>
+        </form>
+        <div class="origin">
+          <div>
+            <span class="origin-label" data-i18n="originLabel">Origine di questa estensione</span>
+            <code id="extension-origin"></code>
+          </div>
+          <button id="copy-origin" class="text-button" type="button" data-i18n="copyOrigin">Copia origine</button>
+        </div>
+      </details>
+    </section>
+
+    <section class="preferences-section" aria-labelledby="preferences-title">
+      <div class="section-heading">
+        <p class="eyebrow" data-i18n="stepTwo">Passo 2 · Preferenze</p>
+        <h2 id="preferences-title" data-i18n="preferencesTitle">Il tuo contesto</h2>
+        <p data-i18n="preferencesCopy">Scegli paese e lingua da usare nei controlli. Sono preferenze modificabili, non una localizzazione automatica. Questa pagina segue la lingua scelta; i badge in chat sono per ora in italiano.</p>
+      </div>
+      <form id="preferences-form" class="preferences-card">
+        <label class="field">
+          <span data-i18n="countryLabel">Paese di riferimento</span>
+          <select id="country" name="country">
+            <option value="IT">Italia</option>
+            <option value="US">Stati Uniti</option>
+            <option value="GB">Regno Unito</option>
+            <option value="DE">Germania</option>
+            <option value="FR">Francia</option>
+            <option value="ES">Spagna</option>
+          </select>
+        </label>
+        <label class="field">
+          <span data-i18n="languageLabel">Lingua dei controlli</span>
+          <select id="language" name="language">
+            <option value="it">Italiano</option>
+            <option value="en">English</option>
+            <option value="de">Deutsch</option>
+            <option value="fr">Français</option>
+            <option value="es">Español</option>
+          </select>
+        </label>
+        <div class="preferences-footer">
+          <p data-i18n="preferencesNote">La scelta iniziale si basa solo sulla lingua del browser. Puoi cambiarla quando vuoi.</p>
+          <button class="button button-secondary" type="submit" data-i18n="savePreferences">Salva preferenze</button>
+        </div>
+        <p id="preferences-status" class="preferences-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="preview-section" aria-labelledby="preview-title">
+      <div class="section-heading">
+        <p class="eyebrow" data-i18n="stepThree">Passo 3 · Nelle chat</p>
+        <h2 id="preview-title" data-i18n="previewTitle">Tu mantieni il controllo</h2>
+        <p data-i18n="previewCopy">Apri una conversazione e attiva FactTTL con l'interruttore. Puoi spegnerlo in qualsiasi momento.</p>
+      </div>
+      <div class="preview-card">
+        <div class="preview-topline"><span data-i18n="sampleAnswer">Esempio di un risultato</span><span class="sample-dot" aria-hidden="true"></span></div>
+        <div class="sample-message">
+          <span class="sample-avatar" aria-hidden="true">AI</span>
+          <div>
+            <p data-i18n="sampleText">Il controllo riguarda solo le informazioni e le fonti esaminate. Il resto della risposta potrebbe non essere verificato.</p>
+            <div class="sample-badge"><span class="sample-badge-dot" aria-hidden="true"></span><span data-i18n="sampleBadge">Verifica parziale</span></div>
+          </div>
+        </div>
+        <div class="preview-foot"><span class="legend-mark" aria-hidden="true">i</span><span data-i18n="sampleNote">Un badge descrive le prove raccolte: non certifica tutta la risposta.</span></div>
+      </div>
+      <p class="correction-note"><span class="correction-icon" aria-hidden="true">↗</span><span data-i18n="correctionCopy">Se FactTTL trova un contrasto, puoi copiare un riepilogo e incollarlo tu nella chat. Non invia messaggi e non controlla l'AI.</span></p>
+    </section>
+
+    <footer class="page-footer">
+      <span data-i18n="footerLocal">Token e risultati sono salvati localmente; per verificare i link FactTTL contatta le fonti.</span>
+      <span class="footer-separator" aria-hidden="true">·</span>
+      <a href="https://github.com/nicosimoncinii/factttl" target="_blank" rel="noreferrer" data-i18n="projectLink">Progetto open source</a>
+    </footer>
+  </main>
+</body>
+</html>

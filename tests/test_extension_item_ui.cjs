@@ -107,3 +107,35 @@ test("URL-specific evidence keeps products on distinct source paths separate", (
   assert.equal(summarize(result, firstProduct).status, "CONTRADICTED");
   assert.equal(summarize(result, secondProduct).status, "SUPPORTED");
 });
+
+test("a supported news excerpt remains amber and exposes its limited scope", () => {
+  for (const fields of [{scope: "excerpt_consistency"}, {scope: "current_source_consistency", source_analysis_truncated: true}]) {
+    const summary = summarize({checks: [{result: {
+      url: "https://news.example/story", kind: "news", outcome: "SUPPORTED",
+      evidence: [{provider: "ai_assessed_live_source", assessment: "SUPPORTED", citations: [{quote: "Quoted live source evidence."}], ...fields}],
+    }}]});
+    assert.equal(summary.status, "PARTIAL");
+    assert.equal(summary.label, "Coerente con estratto");
+  }
+});
+
+test("a contradiction inferred from a news excerpt names the limited scope", () => {
+  const summary = summarize({checks: [{result: {
+    url: "https://news.example/story", kind: "news", outcome: "CONTRADICTED",
+    evidence: [{provider: "ai_assessed_live_source", scope: "excerpt_consistency", assessment: "CONTRADICTED", citations: [{quote: "Quoted live source evidence."}]}],
+  }}]});
+  assert.equal(summary.status, "CONTRADICTED");
+  assert.equal(summary.label, "In contrasto con estratto");
+});
+
+test("conflicting provided sources never produce a decisive news badge", () => {
+  const summary = summarize({checks: [{result: {
+    url: "https://news.example/story", kind: "news", outcome: "INCONCLUSIVE",
+    evidence: [
+      {provider: "ai_assessed_live_source", scope: "current_source_consistency", assessment: "SUPPORTED", citations: [{quote: "A supported quotation from one source."}]},
+      {provider: "provided_source_comparison", conflicting_sources: true, source_count: 2, independence_established: false},
+    ],
+  }}]});
+  assert.equal(summary.status, "INCONCLUSIVE");
+  assert.equal(summary.label, "Fonti in contrasto");
+});

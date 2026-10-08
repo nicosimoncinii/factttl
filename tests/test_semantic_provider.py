@@ -292,7 +292,7 @@ def test_multibyte_input_cannot_silently_truncate_context(
     requests = serve(monkeypatch)
     result = call(source_text="\U0001f600" * 12000)
     assert result["error_reason"] == "input_exceeds_context_budget"
-    assert [path for path, _ in requests] == ["/api/show"]
+    assert requests == []  # Reject profile overflow before contacting the model.
 
 
 def test_absence_not_contradiction(monkeypatch: pytest.MonkeyPatch) -> None:

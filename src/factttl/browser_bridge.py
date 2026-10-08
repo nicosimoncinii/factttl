@@ -102,11 +102,18 @@ def _local_news_model_available(model: str) -> dict[str, object]:
 
 def news_engine_health(model: str | None) -> dict[str, object]:
     """Cache bounded local availability checks; no source text is submitted."""
+    from factttl.engine_profile import engine_profile
+
+    try:
+        profile_name = engine_profile().name
+    except ValueError:
+        profile_name = "invalid"
     base: dict[str, object] = {
         "kind": "ollama_local",
         "configured": bool(model),
         "model": model[:128] if model else None,
         "scope": "current_source_consistency",
+        "inference_profile": profile_name,
         "limitation": (
             "Availability of a local model, not proof that inference succeeded."
         ),

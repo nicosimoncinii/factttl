@@ -67,4 +67,5 @@ The package is pre-1.0. Public imports are provided for convenient embedding,
 but names, signatures, result fields, and policy semantics may change between
 minor releases until the project publishes a stable SDK compatibility
 guarantee. Pin the FactTTL version in applications where reproducibility
-matters.
+matters. The [release policy](release-policy.md) specifies public import scope,
+schema compatibility, migration notes and the deprecation interval.

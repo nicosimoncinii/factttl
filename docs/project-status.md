@@ -1,4 +1,4 @@
-# Implementation status — 2026-10-07
+# Implementation status — 2026-10-08
 
 This is a personal testing release. Implemented behavior is distinct from a
 stable SDK, a signed Firefox release, or independent verification of world facts.
@@ -12,10 +12,10 @@ stable SDK, a signed Firefox release, or independent verification of world facts
 | #11–#13 | Optional live HTTPS adapter, provenance contract, guarded retrieval and persistent corrections; ADR-006 | Implemented for personal testing |
 | #14–#15 | Offline CLI scan, stdin/files, explicit exit semantics | Implemented |
 | #17 | Network/privacy documentation and ignored local credentials | Implemented |
-| #18 | Public imports and embedding docs exist; stable support/deprecation commitments remain preliminary | Open |
+| #18 | Public imports, offline embedding and deprecation expectations documented in `docs/python-api.md` and `docs/release-policy.md` | Reviewed |
 | #19 | MCP and browser extension workflows implemented; maintenance/coverage evaluation across other agents remains open | Open |
-| #20 | Per-reference status buttons exist; scan-to-scan report diff and shareable public badge do not | Open |
-| #21 | Pre-1.0 limitations documented; release/support policy for 1.0 is unfinished | Open |
+| #20 | `docs/report-diff-design.md` defines denominator, unknowns, policy/time context and sharing restrictions; reviewed proposal, command not implemented | Design reviewed |
+| #21 | Compatibility, semantic versioning, security and release expectations documented in `docs/release-policy.md`; no 1.0 release claimed | Reviewed |
 
 ## Current browser work
 
@@ -28,6 +28,12 @@ stable SDK, a signed Firefox release, or independent verification of world facts
   the fetched source. Conclusions require citations in that source and remain
   attributed to AI source-consistency assessment.
 - Source dates, accessibility and model readiness never prove truth.
+- Up to three supplied sources for one assertion are compared once each. Conflicts
+  and incomplete comparisons remain inconclusive. Long sources use an explicitly
+  limited 1,500-character excerpt, shown as partial evidence in the UI.
+- Qwen3:4b through local Ollama supports CPU, balanced and extended profiles.
+  The full CPU adapter completed a synthetic contradiction check in 30.53 seconds
+  on the development PC; this is not an accuracy or universal hardware benchmark.
 
 ## Remaining product work
 
@@ -37,5 +43,5 @@ stable SDK, a signed Firefox release, or independent verification of world facts
 4. Host-supported model context: a visual badge alone cannot teach ChatGPT to
    consult corrections in every future conversation. Currently a correction can
    be copied explicitly, or retrieved through a selected MCP tool.
-5. Stable release and support policy, account isolation for shared hosting,
+5. Release implementation, account isolation for shared hosting,
    broader end-to-end coverage across browsers and provider/model evaluations.

@@ -91,7 +91,7 @@
         if (sourceState && sourceState.source_status !== "FETCHED") text(row, "p", "La fonte non ha restituito un testo leggibile: il contenuto della notizia non è stato confrontato.", "factttl-fact-note");
         const assessment = (check.evidence || []).find(e => e.provider === "ai_assessed_live_source");
         const comparison = (check.evidence || []).find(e => e.provider === "provided_source_comparison");
-        if (comparison) text(row, "p", comparison.conflicting_sources ? "Le fonti fornite non concordano: questa affermazione non è confermata." : `Confrontate ${comparison.source_count} fonti fornite. La loro indipendenza non è stata accertata.`, "factttl-fact-note");
+        if (comparison) text(row, "p", comparison.conflicting_sources ? "Le fonti non concordano: questa affermazione non è confermata." : `Fonti previste nel confronto: ${comparison.supplied_source_count ?? comparison.source_count}. Un limite o un errore può impedirne la lettura; controlla gli esiti sotto. L’indipendenza non è stata accertata.`, "factttl-fact-note");
         const discovery = (check.evidence || []).find(e => e.provider === "public_source_discovery");
         if (discovery) {
           const messages = {FOUND: `Lette ${discovery.fetched_source_count} fonti trovate tramite ricerca esterna. La loro indipendenza non è stata accertata.`, EMPTY: "La ricerca esterna non ha trovato fonti utilizzabili.", ERROR: "La ricerca esterna non è riuscita: questo non conferma né smentisce la notizia.", PRIVACY_REJECTED: "Query non inviata per proteggere dati potenzialmente privati."};

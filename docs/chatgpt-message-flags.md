@@ -26,6 +26,12 @@ desktop application.
 The scanner recognizes explicitly URL-associated prices in EUR, product stock,
 discount assertions and link accessibility. Amazon ASIN links also request stock
 and an observed public price even when the answer gives no explicit price.
+ChatGPT product-search shortcuts (`/?hints=search&q=...`) and Amazon search
+pages receive a structural search badge: no offer is selected. This local check
+does not open a private ChatGPT page or require the bridge. Product images and
+favicon assets are excluded from merchant checks. Search links request a direct
+offer in the requested store, even when the bridge is unavailable; this does
+not establish that a product is out of stock or that its quoted price is false.
 Selected country and language are user preferences, not GPS or delivery proof.
 The source request uses the selected language and flags a different marketplace.
 It preserves conditional language,
@@ -50,10 +56,23 @@ corrections prevent an unqualified green status. The extension does not read
 ChatGPT's private conversation APIs, change model weights, or transmit hidden
 instructions to the model. With **Memoria attiva**, it appends relevant local
 findings as a visible quoted block to a message the user chooses to send,
-including expiry and source scope. It never initiates a message on its own.
+including expiry and source scope.
+The memory control only attaches history to a user-selected send. A separate
+**Correzione automatica** control can send a visible correction follow-up after
+the latest answer is complete, with an empty composer and the chat visible.
+**Correzione manuale** means those automatic sends are disabled. The follow-up
+asks for original and corrected references and rechecks replacements, with at
+most two sends per human request. It preserves the original assistant text and
+does not guarantee the provider will obey. The evidence distinguishes extension
+findings from an actual MCP tool call; missing evidence or connection errors
+must not be described as an out-of-stock product.
 Disabling the switch removes its own unsent block. See [prompt memory](prompt-memory.md).
 A separately selected FactTTL plugin
 has its own tool availability and is not disabled by this browser switch.
+The settings connection status describes only the browser extension and its
+local bridge (`8765`). It does not assert that an optional ChatGPT MCP app or
+tunnel is connected; those are separate processes and need separate readiness
+checks. See [the personal MCP guide](chatgpt-local-test.md).
 
 ## Distribution
 

@@ -70,7 +70,7 @@ test("verified product button displays stock and actual observed price", () => {
   const result = {checks: [entry({outcome: "SUPPORTED", observed_value: "available"}).response.result.checks[0], entry({kind: "product_price", outcome: "SUPPORTED", observed_value: "10.99 EUR"}).response.result.checks[0]]};
   assert.match(summarize(result, url).label, /Disponibile.*10,99/);
 });
-function harness({deferred = false} = {}) {
+function harness({deferred = false, sendResult = {ok: true}} = {}) {
   class Node {
     constructor(tag = "DIV") {this.tagName = tag; this.children = []; this.dataset = {}; this.isConnected = true; this.textContent = ""; this.listeners = {};}
     append(...nodes) {this.children.push(...nodes);}
@@ -84,7 +84,7 @@ function harness({deferred = false} = {}) {
   const pending = new Promise(r => {resolve = r;});
   const sandbox = vm.createContext({document: {createElement: tag => new Node(tag), hidden: false}, crypto: webcrypto, TextEncoder, Uint8Array, URL, Date});
   vm.runInContext(readFileSync(require.resolve("../integrations/chatgpt-extension/correction.js"), "utf8"), sandbox);
-  const installed = sandbox.FactTTLCorrection.install({getState: () => state, control, isStreaming: () => streaming, memory: {isEnabled: () => true, clearCorrectionDraft() {}, sendCorrection: async (value, guard) => {if (guard()) {sent.push(value); return {ok: true};} return {ok: false};}}, send: async m => {calls.push(m); if (m.type === "GET_MEMORY_CONTEXT") return deferred ? pending : {ok: true, context: {findings: []}}; return {ok: true, reserved: true, reservation: "r"};}});
+  const installed = sandbox.FactTTLCorrection.install({getState: () => state, control, isStreaming: () => streaming, memory: {isEnabled: () => true, clearCorrectionDraft() {}, sendCorrection: async (value, guard) => {if (guard()) {sent.push(value); return sendResult;} return {ok: false};}}, send: async m => {calls.push(m); if (m.type === "GET_MEMORY_CONTEXT") return deferred ? pending : {ok: true, context: {findings: []}}; return {ok: true, reserved: true, reservation: "r"};}});
   const args = {root, identity: "answer-a", entries: [entry()], settled: true};
   return {state, root, control, installed, args, calls, sent, resolve: () => resolve({ok: true, context: {findings: []}}), stream: value => {streaming = value;}};
 }
@@ -107,6 +107,41 @@ for (const change of ["disabled", "route", "edited", "newer-answer", "auto-off"]
 test("manual mode and third correction round make no automatic send", async () => {
   const h = harness(); await h.installed.update({...h.args, round: 3}); assert.equal(h.sent.length, 0);
   h.control.children[0].listeners.click(); await h.installed.update(h.args); assert.equal(h.sent.length, 0);
+});
+
+test("manual preference is preserved and its toggle explains how to activate automatic correction", async () => {
+  const h = harness(); h.state.autoCorrection = false; h.installed.refresh();
+  const toggle = h.control.children[0];
+  assert.equal(toggle.textContent, "Correzione manuale");
+  assert.match(toggle.title, /Clicca per attivare/);
+  await h.installed.update(h.args);
+  assert.equal(h.sent.length, 0);
+  assert.equal(h.state.autoCorrection, false);
+});
+
+test("correction attributes evidence to the extension without inventing an MCP connection or call", () => {
+  const prompt = correctionPrompt(collectCorrections([entry()]));
+  assert.match(prompt, /arrivano dall'estensione FactTTL/);
+  assert.match(prompt, /controlli strutturali dei link non richiedono una connessione/);
+  assert.match(prompt, /Non dimostrano che hai chiamato l'app MCP/);
+  assert.match(prompt, /non dichiarare collegato un servizio senza averne un riscontro/);
+  assert.match(prompt, /non dire che il dato è falso o che il prodotto è esaurito/);
+});
+
+test("an attempted host submit without acknowledgment keeps its reservation and never resends the same answer", async () => {
+  const h = harness({sendResult: {ok: false, reason: "not_sent", attempted: true}});
+  await h.installed.update(h.args); await h.installed.update(h.args);
+  assert.equal(h.sent.length, 1);
+  assert.equal(h.calls.filter(m => m.type === "RESERVE_CORRECTION").length, 1);
+  assert.equal(h.calls.filter(m => m.type === "RELEASE_CORRECTION").length, 0);
+  assert.match(h.root.children[0].children[2].textContent, /Invio non confermato/);
+  assert.match(h.root.children[0].children[2].textContent, /nessun tentativo duplicato/);
+});
+
+test("a correction stopped before any submit attempt releases its reservation", async () => {
+  const h = harness({sendResult: {ok: false, reason: "changed"}});
+  await h.installed.update(h.args);
+  assert.equal(h.calls.filter(m => m.type === "RELEASE_CORRECTION").length, 1);
 });
 test("successful recheck removes stale correction panel and duplicate updates do not resend", async () => {
   const h = harness(); await h.installed.update(h.args); await h.installed.update(h.args);

@@ -47,6 +47,15 @@ function load({engine = {configured: false, ready: false}, handler, extension = 
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
+test("connected settings identify the browser service rather than claiming MCP health", async () => {
+  const fixture = load();
+  await settle();
+  assert.equal(fixture.elements.get("connection-label").textContent, "Browser collegato al servizio locale");
+  const source = fs.readFileSync(path.join(__dirname, "../integrations/chatgpt-extension/options.html"), "utf8");
+  assert.match(source, /data-i18n="transportNote"/);
+  assert.match(source, /collegamento MCP separato/);
+});
+
 test("enabled external discovery discloses outgoing Bing queries and evidence limits", async () => {
   const fixture = load({engine: {configured: true, ready: true, discovery_provider: "bing", discovery_sends_query: true}});
   await settle();

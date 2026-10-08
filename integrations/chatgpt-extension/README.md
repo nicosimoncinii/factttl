@@ -127,6 +127,9 @@ i riscontri, chiede di ammettere e correggere il dato errato, sostituire le offe
 esaurite e ricalcolare il carrello. Le alternative della nuova risposta vengono
 ricontrollate. Un link di ricerca Amazon richiede la selezione di un'offerta
 precisa: aprire i risultati di ricerca non prova prezzo o disponibilità.
+Anche i pulsanti prodotto che puntano a `chatgpt.com/?hints=search&q=...`
+sono ricerche, non offerte Amazon. Sono segnalati localmente senza aprire
+una pagina privata di ChatGPT; immagini prodotto e favicon non sono offerte.
 Se manca una prova su un'offerta Amazon, chiede di cercare riscontri o un'altra
 offerta: questa richiesta non dichiara il dato falso o il prodotto esaurito.
 
@@ -137,6 +140,16 @@ la chat visibile. È limitato a due tentativi per richiesta, con un registro loc
 che evita invii duplicati dopo un ricaricamento. Il modello del provider può
 comunque non seguire la richiesta: le offerte restano segnalate finché nuovi
 riscontri non le confermano. Puoi spegnere l'autocorrezione separatamente.
+Se il controllo mostra **Correzione manuale**, l'invio automatico è spento:
+premilo per passare a **Correzione automatica**. La scelta resta salvata per
+questa chat. **Memoria attiva** da sola non avvia una correzione.
+
+Il collegamento nelle impostazioni conferma solo il servizio dell'estensione
+sul PC. L'app FactTTL selezionabile in ChatGPT usa invece un server MCP e un
+tunnel separati: un suo errore di connessione non prova che l'estensione sia
+spenta. I messaggi di correzione e memoria indicano l'origine dei riscontri,
+senza inventare chiamate a quell'app. Non disponibile significa un esplicito
+riscontro di esaurimento del prodotto; una fonte mancante resta non verificata.
 
 Spegnere la memoria
 o FactTTL rimuove un suo allegato ancora nella bozza; un allegato modificato va

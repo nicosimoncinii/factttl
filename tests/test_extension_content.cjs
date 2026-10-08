@@ -212,3 +212,36 @@ test("advice disclaimers and opinions do not receive generic unknown badges", ()
   assert.equal(publicFactCandidate("NASA ha annunciato il lancio della nuova missione Artemis."), true);
   assert.equal(publicFactCandidate("In Toscana il nuovo decreto rende obbligatorio questo requisito."), true);
 });
+
+test("mixed product references preserve host shortcuts locally without fetching them through the public bridge", () => {
+  const shortcut = "https://chatgpt.com/?hints=search&q=Syma+S107G";
+  const merchant = "https://www.amazon.it/dp/B012345678";
+  const row = element("p", [text("Syma S107G 41,99 EUR "), element("a", [text("Apri prodotto")], {href: shortcut}), text(" "), element("a", [text("Amazon")], {href: merchant})]);
+  assert.deepEqual(serializeMessage(row).links, [shortcut, merchant]);
+  const publicPayload = serializeMessage(row, {includeHostSearch: false});
+  assert.deepEqual(publicPayload.links, [merchant]);
+  assert.doesNotMatch(publicPayload.text, /https:\/\/chatgpt\.com/);
+  assert.match(publicPayload.text, /Syma S107G 41,99 EUR Apri prodotto/);
+});
+
+test("production scanner settles host product-search shortcuts locally and invokes correction without a bridge request", () => {
+  const vm = require("node:vm");
+  const source = fs.readFileSync(require.resolve("../integrations/chatgpt-extension/content.js"), "utf8");
+  const fn = source.slice(source.indexOf("  function scan()"), source.indexOf("  function updateCorrection()"));
+  const target = {tagName: "A", href: "https://chatgpt.com/?hints=search&q=Syma+S107G", isConnected: true};
+  const payload = {text: "Syma S107G 41,99 EUR", links: [target.href]};
+  const state = {lastText: JSON.stringify(payload), signature: "", changedAt: Date.now() - 2000, pending: false, finishedAt: 0, box: {remove() {}}};
+  const results = []; let corrected = 0;
+  const context = vm.createContext({enabled: true, currentChat: "chatgpt:a", epoch: 1, states: new Map([[target, state]]), queue: [],
+    Date, JSON, Set, Map, MESSAGE_SELECTOR: "assistant", document: {querySelectorAll: () => [{}]}, itemTargets: () => [target], sourceFor: () => target,
+    serializeMessage: () => payload, hostSearchURL: require("../integrations/chatgpt-extension/content.js").hostSearchURL,
+    isStreaming: () => false, showResult: (_state, result) => results.push(result), pump: () => {}, updateCorrection: () => {corrected += 1;}});
+  vm.runInContext(fn + "\nscan();", context);
+  assert.equal(context.queue.length, 0);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].result.reference.product_selected, false);
+  assert.equal(results[0].result.reference.basis, "url_structure");
+  assert.equal(state.signature, JSON.stringify(payload));
+  assert.ok(state.finishedAt > 0);
+  assert.equal(corrected, 1);
+});

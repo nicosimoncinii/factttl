@@ -4,11 +4,25 @@
   const kinds = {product_availability: "Disponibilità", product_price: "Prezzo", product_discount: "Sconto", link_available: "Apertura del link", news: "Notizia"};
   const sameURL = (a, b) => { try { const x = new URL(a); const y = new URL(b); x.hash = y.hash = ""; return x.href === y.href; } catch { return false; } };
   function amazonSearch(value) {
-    try { const u = new URL(value); return u.protocol === "https:" && ["amazon.it", "amazon.com", "amazon.co.uk", "amazon.de", "amazon.fr", "amazon.es"].includes(u.hostname.replace(/^www\./, "")) && /^\/(?:s|gp\/search)\/?$/.test(u.pathname); } catch { return false; }
+    try { const u = new URL(value); return u.protocol === "https:" && !u.username && !u.password && (!u.port || u.port === "443") && ["amazon.it", "amazon.com", "amazon.co.uk", "amazon.de", "amazon.fr", "amazon.es"].includes(u.hostname.replace(/^www\./, "")) && /^\/(?:s|gp\/search)\/?$/.test(u.pathname); } catch { return false; }
+  }
+  function searchDestination(value) {
+    if (amazonSearch(value)) return "amazon";
+    try {
+      const u = new URL(value), queries = u.searchParams.getAll("q");
+      return u.protocol === "https:" && !u.username && !u.password && (!u.port || u.port === "443") &&
+        ["chatgpt.com", "www.chatgpt.com", "chat.openai.com"].includes(u.hostname) && u.pathname === "/" &&
+        u.searchParams.getAll("hints").length === 1 && u.searchParams.get("hints") === "search" && queries.length === 1 &&
+        Boolean(queries[0].trim()) && queries[0].length <= 1000 && !/[\u0000-\u001f\u007f]/.test(queries[0]) ? "host" : null;
+    } catch { return null; }
   }
   function summarize(result, url) {
     const all = (result.checks || []).map(c => c.result || c);
     const checks = url ? all.filter(c => sameURL(c.url, url)) : all;
+    const search = searchDestination(url);
+    // A search destination cannot become a verified offer or an out-of-stock
+    // product, regardless of a bridge error or an accessible search page.
+    if (search) return {status: "SEARCH", label: search === "host" ? "Ricerca ChatGPT: nessuna offerta scelta" : "Ricerca Amazon: nessuna offerta scelta", checks: checks.filter(c => c.kind === "link_available")};
     const factual = checks.filter(c => c.kind !== "link_available");
     const assessed = c => (c.evidence || []).some(e => e.provider === "ai_assessed_live_source" && ["current_source_consistency", "excerpt_consistency"].includes(e.scope) && e.assessment === c.outcome && (e.citations || []).length);
     const excerpt = c => (c.evidence || []).some(e => e.source_analysis_truncated === true || e.scope === "excerpt_consistency");
@@ -49,7 +63,6 @@
     }
     if (status === "INCONCLUSIVE" && checks.some(c => c.outcome === "ERROR")) { status = "ERROR"; label = "Controllo incompleto"; }
     if (result.status === "ERROR") { status = "ERROR"; label = "Controllo non riuscito"; }
-    if (amazonSearch(url) && ["ACCESSIBLE", "INCONCLUSIVE"].includes(status)) { status = "SEARCH"; label = "Ricerca Amazon: nessuna offerta scelta"; }
     if (!["CONTRADICTED", "ERROR"].includes(status)) {
       const stock = checks.find(c => c.kind === "product_availability" && c.outcome === "SUPPORTED" && c.observed_value === "available");
       const price = checks.find(c => c.kind === "product_price" && c.outcome === "SUPPORTED" && /^\d+(?:[.,]\d{1,2})? (EUR|USD|GBP)$/.test(c.observed_value || ""));
@@ -59,7 +72,7 @@
     }
     return {status, label, checks};
   }
-  const exported = {summarize, sameURL};
+  const exported = {summarize, sameURL, searchDestination};
   if (typeof module !== "undefined" && module.exports) module.exports = exported;
   if (typeof document === "undefined") return;
   let dialog;
@@ -120,7 +133,7 @@
     const title = text(dialog, "h2", sourceTitle || state.title || "Contenuto da verificare"); title.id = "factttl-sheet-title";
     const conclusion = text(dialog, "p", summary.label, "factttl-conclusion"); conclusion.dataset.status = summary.status;
     const intro = summary.status === "SEARCH"
-      ? "Questo link apre una ricerca, non un’offerta precisa. Prezzo e disponibilità dei prodotti elencati non sono stati verificati."
+      ? "Questo link apre una ricerca, non un’offerta precisa. Prezzo, disponibilità e compatibilità dei prodotti non sono stati verificati. FactTTL chiede alla chat di cercare link diretti al prodotto nel negozio richiesto."
       : summary.status === "CONTRADICTED"
       ? "Il dato indicato non coincide con la fonte consultata."
       : summary.status === "ACCESSIBLE"
@@ -254,5 +267,5 @@
     state.badge.dataset.status = "PENDING";
     state.badge.setAttribute("aria-label", `Controllo in attesa: ${state.title}`);
   }
-  globalThis.FactTTLItemUI = {create, update, invalidate, close, summarize};
+  globalThis.FactTTLItemUI = {create, update, invalidate, close, summarize, searchDestination};
 })();

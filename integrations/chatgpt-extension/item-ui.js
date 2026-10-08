@@ -7,18 +7,24 @@
     const all = (result.checks || []).map(c => c.result || c);
     const checks = url ? all.filter(c => sameURL(c.url, url)) : all;
     const factual = checks.filter(c => c.kind !== "link_available");
-    const assessed = c => (c.evidence || []).some(e => e.provider === "ai_assessed_live_source" && e.scope === "current_source_consistency" && e.assessment === c.outcome && (e.citations || []).length);
+    const assessed = c => (c.evidence || []).some(e => e.provider === "ai_assessed_live_source" && ["current_source_consistency", "excerpt_consistency"].includes(e.scope) && e.assessment === c.outcome && (e.citations || []).length);
+    const excerpt = c => (c.evidence || []).some(e => e.source_analysis_truncated === true || e.scope === "excerpt_consistency");
     let status = "INCONCLUSIVE", label = "Non verificato";
-    if (checks.some(c => c.outcome === "CONTRADICTED" && (c.kind !== "news" || assessed(c)))) { status = "CONTRADICTED"; label = factual.some(c => c.outcome === "CONTRADICTED") ? "Dato smentito" : "Link non disponibile"; }
+    const conflicting = checks.some(c => c.kind === "news" && (c.evidence || []).some(e => e.provider === "provided_source_comparison" && e.conflicting_sources === true));
+    if (conflicting) label = "Fonti in contrasto";
+    else if (checks.some(c => c.outcome === "CONTRADICTED" && (c.kind !== "news" || assessed(c)))) { status = "CONTRADICTED"; label = factual.some(c => c.outcome === "CONTRADICTED") ? "Dato smentito" : "Link non disponibile"; }
     else if (checks.some(c => c.kind === "news")) {
       const news = checks.filter(c => c.kind === "news");
-      if (news.every(c => c.outcome === "SUPPORTED" && assessed(c)) && !(result.prior_corrections || []).length) { status = "SUPPORTED"; label = "Coerente con la fonte"; }
+      if (news.every(c => c.outcome === "SUPPORTED" && assessed(c)) && !(result.prior_corrections || []).length) {
+        status = news.some(excerpt) ? "PARTIAL" : "SUPPORTED";
+        label = news.some(excerpt) ? "Coerente con estratto" : "Coerente con la fonte";
+      }
       else label = "Notizia non verificata";
     }
     else if (factual.length && factual.every(c => c.outcome === "SUPPORTED") && !(result.unchecked_claims || []).length && !(result.prior_corrections || []).length) { status = "SUPPORTED"; label = "Dati confermati"; }
     else if (factual.some(c => c.outcome === "SUPPORTED")) { status = "PARTIAL"; label = "Verifica parziale"; }
     else if (checks.length && checks.every(c => c.kind === "link_available" && c.outcome === "SUPPORTED")) { status = "ACCESSIBLE"; label = "Link accessibile"; }
-    if (status === "CONTRADICTED" && checks.some(c => c.kind === "news" && c.outcome === "CONTRADICTED" && assessed(c))) label = "In contrasto con la fonte";
+    if (status === "CONTRADICTED" && checks.some(c => c.kind === "news" && c.outcome === "CONTRADICTED" && assessed(c))) label = checks.some(c => c.kind === "news" && c.outcome === "CONTRADICTED" && excerpt(c)) ? "In contrasto con estratto" : "In contrasto con la fonte";
     if (result.status === "ERROR") { status = "ERROR"; label = "Controllo non riuscito"; }
     return {status, label, checks};
   }
@@ -73,7 +79,10 @@
         const sourceState = (check.evidence || []).find(e => e.source === "live_news_source");
         if (sourceState && sourceState.source_status !== "FETCHED") text(row, "p", "La fonte non ha restituito un testo leggibile: il contenuto della notizia non è stato confrontato.", "factttl-fact-note");
         const assessment = (check.evidence || []).find(e => e.provider === "ai_assessed_live_source");
+        const comparison = (check.evidence || []).find(e => e.provider === "provided_source_comparison");
+        if (comparison) text(row, "p", comparison.conflicting_sources ? "Le fonti fornite non concordano: questa affermazione non è confermata." : `Confrontate ${comparison.source_count} fonti fornite. La loro indipendenza non è stata accertata.`, "factttl-fact-note");
         if (assessment) {
+          if (assessment.source_analysis_truncated === true || assessment.scope === "excerpt_consistency") text(row, "p", "Il confronto riguarda solo un estratto del testo: non verifica l’intero articolo né la verità della notizia.", "factttl-fact-note");
           text(row, "p", assessment.configured ? "Valutazione AI del testo letto nella fonte. Non è una conferma indipendente della notizia." : "Il motore AI per confrontare la notizia con le fonti non è ancora configurato.", "factttl-fact-note");
           for (const citation of assessment.citations || []) if (citation.quote) text(row, "blockquote", citation.quote);
           if (assessment.configured && check.rationale) text(row, "p", check.rationale, "factttl-fact-note");

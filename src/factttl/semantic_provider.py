@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from factttl.engine_profile import engine_profile
 from factttl.verification import parse_timestamp, validate_url
 
 _HOST = "127.0.0.1"
@@ -255,6 +256,11 @@ def assess_news_claim(
     if not selected:
         result["error_reason"] = "not_configured"
         return result
+    try:
+        profile = engine_profile()
+    except ValueError:
+        return fail("invalid_engine_profile")
+    result["inference_profile"] = profile.name
     if (
         not isinstance(selected, str)
         or _MODEL_NAME.fullmatch(selected) is None
@@ -275,6 +281,8 @@ def assess_news_claim(
         or country not in _COUNTRIES
     ):
         return fail("invalid_input")
+    if len(source_text) > profile.source_chars:
+        return fail("input_exceeds_context_budget")
     try:
         validate_url(source_url)
         if urlsplit(source_url).scheme.lower() != "https":
@@ -316,6 +324,9 @@ def assess_news_claim(
             "CONTRADICTED, never SUPPORTED. If the source says 'not X' while the "
             "claim says X, that is CONTRADICTED. Same topic alone is not support. "
             "If the claim adds details absent from the source, INCONCLUSIVE. "
+            "Supplied text may be an explicitly limited excerpt: abstain if "
+            "it cannot establish the complete claim. Never infer the position "
+            "of omitted article sections. "
             "Prefer ending rationale with the exact marker ASSESSMENT: SUPPORTED, "
             "ASSESSMENT: CONTRADICTED or ASSESSMENT: INCONCLUSIVE, matching "
             "your explanation and the final outcome. Write that marker only "
@@ -340,7 +351,7 @@ def assess_news_claim(
         # never silently discard part of the supplied source to fit the context.
         prompt_bytes = len((system + user_content).encode("utf-8"))
         prompt_bytes += len(json.dumps(schema).encode("utf-8"))
-        if prompt_bytes > 26000:
+        if prompt_bytes > profile.prompt_bytes:
             return fail("input_exceeds_context_budget")
         response = _post_json(
             "/api/chat",
@@ -353,7 +364,7 @@ def assess_news_claim(
                 "format": schema,
                 "stream": False,
                 "think": False,
-                "options": {"temperature": 0, "num_predict": 1600, "num_ctx": 32768},
+                "options": profile.options(),
                 "keep_alive": "5m",
             },
             deadline,

@@ -1,4 +1,4 @@
-param([string]$ExtensionOrigin = '', [string]$NewsModel = '', [switch]$DisableNews)
+param([string]$ExtensionOrigin = '', [string]$NewsModel = '', [switch]$DisableNews, [ValidateSet('cpu', 'balanced', 'extended')][string]$InferenceProfile = '')
 
 $ErrorActionPreference = 'Stop'
 $factttlProject = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -6,12 +6,16 @@ $factttlPython = Join-Path $factttlProject '.venv/Scripts/python.exe'
 $factttlState = Join-Path $factttlProject '.factttl'
 $factttlConfig = Join-Path $factttlState 'extension-config.json'
 $factttlNewsConfig = Join-Path $factttlState 'news-model.json'
-if (-not $NewsModel -and -not $DisableNews -and (Test-Path -LiteralPath $factttlNewsConfig)) {
-    $NewsModel = (Get-Content -LiteralPath $factttlNewsConfig -Raw | ConvertFrom-Json).model
+if (Test-Path -LiteralPath $factttlNewsConfig) {
+    $factttlSavedNews = Get-Content -LiteralPath $factttlNewsConfig -Raw | ConvertFrom-Json
+    if (-not $NewsModel -and -not $DisableNews) { $NewsModel = $factttlSavedNews.model }
+    if (-not $InferenceProfile) { $InferenceProfile = $factttlSavedNews.inference_profile }
 }
 if ($NewsModel -and ($NewsModel -notmatch '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$' -or $NewsModel -match '(?i)cloud|://')) {
     throw 'Nome del modello locale non valido.'
 }
+if (-not $InferenceProfile) { $InferenceProfile = 'balanced' }
+if ($InferenceProfile -notin @('cpu', 'balanced', 'extended')) { throw 'Profilo locale non valido.' }
 if ($DisableNews) { $NewsModel = '' }
 if (-not $ExtensionOrigin -and (Test-Path -LiteralPath $factttlConfig)) {
     $factttlPreviousSettings = Get-Content -LiteralPath $factttlConfig -Raw | ConvertFrom-Json
@@ -25,9 +29,9 @@ if (-not (Test-Path -LiteralPath $factttlPython)) {
     throw 'Ambiente Python mancante: prepara .venv come indicato nel README.'
 }
 New-Item -ItemType Directory -Path $factttlState -Force | Out-Null
-@{model = $NewsModel} | ConvertTo-Json | Set-Content -LiteralPath $factttlNewsConfig
+@{model = $NewsModel; inference_profile = $InferenceProfile} | ConvertTo-Json | Set-Content -LiteralPath $factttlNewsConfig
 if ($NewsModel -and (Test-Path -LiteralPath (Join-Path $factttlState 'runtime/installed.json'))) {
-    & (Join-Path $PSScriptRoot 'Setup-FactTTL-News.ps1') -StartOnly
+    & (Join-Path $PSScriptRoot 'Setup-FactTTL-News.ps1') -StartOnly -InferenceProfile $InferenceProfile
 }
 
 function Test-FactTTLBridge {
@@ -49,13 +53,13 @@ if (Test-FactTTLBridge) {
         Authorization = 'Bearer ' + $factttlCurrentSettings.token
         'X-FactTTL-Origin' = $factttlCurrentSettings.allowed_origin
     }
-    if ([string]$factttlCurrentHealth.news_engine.model -ne $NewsModel) {
+    if ([string]$factttlCurrentHealth.news_engine.model -ne $NewsModel -or ($NewsModel -and [string]$factttlCurrentHealth.news_engine.inference_profile -ne $InferenceProfile)) {
         throw 'Modello salvato. Riavvia il servizio FactTTL già attivo per applicarlo.'
     }
 } else {
     $factttlArguments = @('-m', 'factttl.browser_bridge', '--extension-origin', $ExtensionOrigin)
     if ($NewsModel) { $factttlArguments += @('--news-model', $NewsModel) }
-    $factttlProcess = Start-Process -FilePath $factttlPython -ArgumentList $factttlArguments -WorkingDirectory $factttlProject -WindowStyle Hidden -RedirectStandardOutput (Join-Path $factttlState 'browser.out.log') -RedirectStandardError (Join-Path $factttlState 'browser.err.log') -PassThru
+    $factttlProcess = Start-Process -FilePath $factttlPython -ArgumentList $factttlArguments -Environment @{ FACTTTL_NEWS_PROFILE = $InferenceProfile } -WorkingDirectory $factttlProject -WindowStyle Hidden -RedirectStandardOutput (Join-Path $factttlState 'browser.out.log') -RedirectStandardError (Join-Path $factttlState 'browser.err.log') -PassThru
     $factttlProcess.Id | Set-Content -LiteralPath (Join-Path $factttlState 'browser.pid')
     for ($factttlAttempt = 0; $factttlAttempt -lt 20; $factttlAttempt++) {
         if (Test-FactTTLBridge) { break }

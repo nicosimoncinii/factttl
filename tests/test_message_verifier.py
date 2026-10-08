@@ -309,7 +309,7 @@ def test_semantic_news_uses_full_live_body_and_persists_scoped_claim(
 ) -> None:
     now = datetime.now(UTC).isoformat()
     quote = "The launch was canceled and the original event will not take place."
-    body = "Introductory background. " * 100 + quote
+    body = "Introductory background. " * 10 + quote
     captured: dict[str, Any] = {}
 
     def source(url: str, **kwargs: Any) -> dict[str, object]:
@@ -420,6 +420,125 @@ def test_news_question_has_no_assertion_for_local_model(
     result = run(tmp_path, "Questa notizia è vera? " + URL)
     news = next(item for item in result["checks"] if item["result"]["kind"] == "news")
     assert news["result"]["outcome"] == "INCONCLUSIVE"
+
+
+@pytest.mark.parametrize(
+    "verdicts,expected",
+    [
+        (["SUPPORTED", "SUPPORTED"], "SUPPORTED"),
+        (["SUPPORTED", "CONTRADICTED"], "INCONCLUSIVE"),
+        (["SUPPORTED", "INCONCLUSIVE"], "INCONCLUSIVE"),
+    ],
+)
+def test_provided_news_sources_must_agree_before_persisting(
+    tmp_path: Path,
+    checks: object,
+    monkeypatch: pytest.MonkeyPatch,
+    verdicts: list[str],
+    expected: str,
+) -> None:
+    urls = ["https://one.example/article", "https://two.example/article"]
+
+    def observe(
+        url: str, language: object, claim: str, country: str, cancellation: object
+    ) -> VerificationResult:
+        return VerificationResult(
+            url=url,
+            kind="news",
+            outcome=verdicts[urls.index(url)],
+            claim_text=claim,
+            observed_at=datetime.now(UTC).isoformat(),
+            rationale="Scoped test assessment",
+            evidence=[
+                {
+                    "provider": "ai_assessed_live_source",
+                    "scope": "current_source_consistency",
+                    "url": url,
+                }
+            ],
+        )
+
+    monkeypatch.setattr(message, "_news_observation", observe)
+    result = run(
+        tmp_path, "Notizia: il lancio ufficiale avviene domani " + " ".join(urls)
+    )
+    news = [check for check in result["checks"] if check["result"]["kind"] == "news"]
+    assert len(news) == 2
+    assert all(check["result"]["outcome"] == expected for check in news)
+    assert all(check["result"]["evidence"][-2]["source_count"] == 2 for check in news)
+    assert all(
+        check["result"]["evidence"][-2]["independence_established"] is False
+        for check in news
+    )
+
+
+def test_configured_engine_checks_linked_statement_without_news_keyword(
+    tmp_path: Path,
+    checks: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FACTTTL_NEWS_MODEL", "local-test")
+    seen = []
+
+    def observe(
+        url: str, language: object, claim: str, country: str, cancellation: object
+    ) -> VerificationResult:
+        seen.append(claim)
+        return VerificationResult(
+            url=url,
+            kind="news",
+            outcome="INCONCLUSIVE",
+            claim_text=claim,
+            observed_at=datetime.now(UTC).isoformat(),
+            rationale="Insufficient evidence",
+            evidence=[],
+        )
+
+    monkeypatch.setattr(message, "_news_observation", observe)
+    run(tmp_path, "Il lancio ufficiale avviene il dodici ottobre " + URL)
+    assert seen == ["Il lancio ufficiale avviene il dodici ottobre"]
+
+
+def test_long_article_is_explicitly_an_excerpt_not_full_article_confirmation(
+    tmp_path: Path,
+    checks: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    quote = "Il lancio ufficiale avverrà il 12 ottobre 2026."
+    body = quote + " Background estraneo." * 700
+    seen: list[str] = []
+    monkeypatch.setattr(
+        message,
+        "read_source_evidence",
+        lambda url, **kwargs: {
+            "observed_at": datetime.now(UTC).isoformat(),
+            "published_at": None,
+            "source_text": body,
+            "status": "FETCHED",
+            "final_url": url,
+        },
+    )
+
+    def assess(claim: str, text: str, url: str, **kwargs: Any) -> dict[str, object]:
+        seen.append(text)
+        return {
+            "outcome": "SUPPORTED",
+            "rationale": "L'estratto concorda.",
+            "citations": [{"quote": quote, "source_url": url}],
+            "engine": "ollama_local",
+            "configured": True,
+        }
+
+    monkeypatch.setattr(semantic, "assess_news_claim", assess)
+    result = run(
+        tmp_path, "Notizia: il lancio ufficiale avverrà il 12 ottobre 2026 " + URL
+    )
+    news = next(
+        check for check in result["checks"] if check["result"]["kind"] == "news"
+    )
+    assert seen == [body[:1500]]
+    assert news["result"]["evidence"][1]["analysis_scope"] == "excerpt_consistency"
+    assert news["result"]["evidence"][1]["source_analysis_truncated"] is True
 
 
 @pytest.mark.parametrize("text,links", [("x" * 20001, []), ("x", [URL] * 21)])

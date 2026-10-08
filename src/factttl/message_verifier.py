@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from dataclasses import replace
@@ -117,9 +118,19 @@ def _news_observation(
             raise CancelledError("Message verification canceled")
         from factttl.semantic_provider import assess_news_claim
 
+        full_source_text = str(source.get("source_text", ""))
+        # Small CPU contexts receive an explicit bounded excerpt. Never suggest
+        # this selection establishes agreement of the complete article.
+        analysis_text = full_source_text[:1500]
+        partial_source = bool(source.get("truncated")) or len(full_source_text) > 1500
+        evidence[0]["source_analysis_truncated"] = partial_source
+        evidence[0]["analysis_scope"] = (
+            "excerpt_consistency" if partial_source else "current_source_consistency"
+        )
+
         assessment = assess_news_claim(
             claim_text,
-            str(source.get("source_text", ""))[:12000],
+            analysis_text,
             str(source["final_url"]),
             language=language or "it",
             country=country,
@@ -138,6 +149,8 @@ def _news_observation(
                 or not isinstance(citation.get("quote"), str)
                 or not 20 <= len(citation["quote"]) <= 1000
                 or " ".join(citation["quote"].split()) not in source_text
+                or " ".join(citation["quote"].split())
+                not in " ".join(analysis_text.split())
                 for citation in citations
             )
         ):
@@ -153,6 +166,12 @@ def _news_observation(
                 "provider": "ai_assessed_live_source",
                 "source": "local_news_assessment",
                 "scope": "current_source_consistency",
+                "analysis_scope": (
+                    "excerpt_consistency"
+                    if partial_source
+                    else "current_source_consistency"
+                ),
+                "source_analysis_truncated": partial_source,
                 "engine": assessment["engine"],
                 "configured": assessment["configured"],
                 "model": assessment.get("model"),
@@ -160,7 +179,10 @@ def _news_observation(
                 "semantic_assessment": outcome,
                 "citations": citations if isinstance(citations, list) else [],
                 "limitation": (
-                    "Semantic consistency with this fetched source; "
+                    "Semantic consistency with the explicitly selected excerpt; "
+                    "not universal truth or independent corroboration."
+                    if partial_source
+                    else "Semantic consistency with this fetched source; "
                     "not universal truth or independent corroboration."
                 ),
             }
@@ -219,6 +241,7 @@ def verify_message(
     specifications: list[tuple[str, str, str | None, str | None]] = [
         (url, "link_available", None, None) for url in urls
     ]
+    news_groups: dict[str, list[str]] = {}
     for fragment in text.splitlines():
         if not fragment.strip():
             continue
@@ -230,15 +253,43 @@ def verify_message(
         if not re.search(r"\w", prose):
             continue
         covered = prose
-        if len(fragment_urls) == 1 and _NEWS.search(prose) and not _PRICE.search(prose):
-            specifications.append(
-                (
-                    fragment_urls[0],
-                    "news",
-                    None,
-                    _linked_claim(fragment, fragment_urls[0]),
-                )
+        semantic_candidate = (
+            bool(os.environ.get("FACTTTL_NEWS_MODEL"))
+            and not _CONDITIONAL.search(prose)
+            and "?" not in prose
+            and len(re.findall(r"\w+", prose)) >= 5
+            and not re.search(
+                r"\b(?:ESP32|acquista|buy|prodotto|product)\b", prose, re.I
             )
+            and not any(
+                "amazon." in (urlsplit(url).hostname or "") for url in fragment_urls
+            )
+        )
+        if (
+            fragment_urls
+            and (_NEWS.search(prose) or semantic_candidate)
+            and not (
+                _PRICE.search(prose)
+                or _POSITIVE.search(prose)
+                or _NEGATIVE.search(prose)
+            )
+        ):
+            # Several explicitly supplied sources share a claim only within one
+            # sentence. Distinct sentences/claims must not be conflated.
+            shared = (
+                len(fragment_urls) > 1
+                and len(re.split(r"[.!?]\s+", prose.strip())) == 1
+            )
+            group = fragment_urls[:3] if shared else fragment_urls[:1]
+            for source_url in group:
+                claim_fragment = fragment
+                for other_url in fragment_urls:
+                    if other_url != source_url:
+                        claim_fragment = claim_fragment.replace(other_url, "")
+                claim = _linked_claim(claim_fragment, source_url)
+                specifications.append((source_url, "news", None, claim))
+                if shared and claim:
+                    news_groups[claim] = group
             unchecked.append(prose.strip()[:1000])
             continue
         asserted_now = (
@@ -350,6 +401,69 @@ def verify_message(
             "Altre proprietà non controllate: limite di sei verifiche per messaggio."
         )
 
+    grouped_results: dict[tuple[str, str], VerificationResult] = {}
+    planned_news = {
+        (url, context) for url, kind, _, context in unique[:6] if kind == "news"
+    }
+    for claim, source_urls in news_groups.items():
+        if not any((url, claim) in planned_news for url in source_urls):
+            continue
+        results = []
+        for source_url in source_urls:
+            if (source_url, claim) not in planned_news:
+                continue
+            check_cancellation()
+            results.append(
+                _news_observation(
+                    source_url, language, claim, region["country"], cancellation_event
+                )
+            )
+        verdicts = {result.outcome for result in results}
+        conflict = {"SUPPORTED", "CONTRADICTED"}.issubset(verdicts)
+        # Absence of agreement is not corroboration. All supplied sources must
+        # be decisive and agree for a grouped assessment to be decisive.
+        combined = (
+            next(iter(verdicts))
+            if len(results) == len(source_urls)
+            and len(verdicts) == 1
+            and verdicts <= {"SUPPORTED", "CONTRADICTED"}
+            and not any(
+                item.get("source_analysis_truncated")
+                for result in results
+                for item in result.evidence
+            )
+            else "INCONCLUSIVE"
+        )
+        merged = [item for result in results for item in result.evidence]
+        for result in results:
+            grouped_results[(result.url, claim)] = replace(
+                result,
+                outcome=combined,
+                rationale=(
+                    "Le fonti fornite sono in conflitto: non usare questa "
+                    "affermazione come confermata."
+                    if conflict
+                    else "Confronto tra le fonti fornite: "
+                    + (
+                        "concordano sull'affermazione."
+                        if combined == "SUPPORTED"
+                        else "contraddicono l'affermazione."
+                        if combined == "CONTRADICTED"
+                        else "prove incomplete; affermazione non confermata."
+                    )
+                ),
+                evidence=[
+                    *merged,
+                    {
+                        "provider": "provided_source_comparison",
+                        "source_count": len(results),
+                        "supplied_source_count": len(source_urls),
+                        "conflicting_sources": conflict,
+                        "independence_established": False,
+                    },
+                ],
+            )
+
     def check_one(
         specification: tuple[str, str, str | None, str | None],
     ) -> dict[str, object]:
@@ -357,7 +471,7 @@ def verify_message(
         try:
             check_cancellation()
             if kind == "news":
-                result = _news_observation(
+                result = grouped_results.get((url, context or "")) or _news_observation(
                     url, language, context, region["country"], cancellation_event
                 )
             elif language is not None:

@@ -54,6 +54,9 @@ ChatGPT's desktop app.
 
 ## What is FactTTL?
 
+See the [compatibility and release policy](docs/release-policy.md) for public
+interfaces, schema versions, deprecation and support commitments during 0.x.
+
 Facts have different rates of change. A statement about water boiling at sea level is usually stable; a software release, company role, price, legal rule, or event date can become outdated. FactTTL treats freshness as a separate dimension of a claim and makes the review interval explicit.
 
 FactTTL is intended to help developers and agent builders decide **which claims need a fresh check, when they need one, and what evidence was checked**. It is not a general-purpose assistant and does not promise that a claim is true.

@@ -8,7 +8,8 @@ Use -StartOnly after installation to restart the same loopback daemon.
 param(
     [ValidateSet('qwen3:4b')]
     [string]$Model = 'qwen3:4b',
-    [switch]$StartOnly
+    [switch]$StartOnly,
+    [ValidateSet('cpu', 'balanced', 'extended')][string]$InferenceProfile = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,6 +27,12 @@ $factttlProfile = Join-Path $factttlRuntime 'profile'
 $factttlTmp = Join-Path $factttlRuntime 'tmp'
 $factttlPidFile = Join-Path $factttlRuntime 'ollama.pid'
 $factttlStateFile = Join-Path $factttlRuntime 'installed.json'
+if (-not $InferenceProfile -and (Test-Path -LiteralPath $factttlStateFile)) {
+    $InferenceProfile = (Get-Content -LiteralPath $factttlStateFile -Raw | ConvertFrom-Json).inference_profile
+}
+if (-not $InferenceProfile) { $InferenceProfile = 'balanced' }
+if ($InferenceProfile -notin @('cpu', 'balanced', 'extended')) { throw 'Profilo locale salvato non valido.' }
+$factttlContext = if ($InferenceProfile -eq 'extended') { '32768' } else { '8192' }
 
 if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
     throw 'Questo script standalone richiede Windows x64.'
@@ -95,7 +102,7 @@ if (Test-FactTTLOllama) {
         OLLAMA_MODELS = $factttlModels
         OLLAMA_NO_CLOUD = '1'
         OLLAMA_NOHISTORY = '1'
-        OLLAMA_CONTEXT_LENGTH = '32768'
+        OLLAMA_CONTEXT_LENGTH = $factttlContext
         OLLAMA_NUM_PARALLEL = '1'
         OLLAMA_MAX_LOADED_MODELS = '1'
         OLLAMA_FLASH_ATTENTION = '1'
@@ -143,5 +150,5 @@ $factttlMetadata = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/show' -Met
 if ($factttlMetadata.remote_host -or $factttlMetadata.remote_model -or $factttlMetadata.details.format -ne 'gguf') {
     throw 'Il modello non è confermato come GGUF locale: setup non confermato.'
 }
-@{ runtime_version=$factttlVersion; runtime_archive_sha256=$factttlArchiveHash; model=$Model; model_storage=$factttlModels; executable=$factttlExe; endpoint='http://127.0.0.1:11434'; cloud_disabled=$true } | ConvertTo-Json | Set-Content -LiteralPath $factttlStateFile -Encoding utf8
+@{ runtime_version=$factttlVersion; runtime_archive_sha256=$factttlArchiveHash; model=$Model; model_storage=$factttlModels; executable=$factttlExe; endpoint='http://127.0.0.1:11434'; cloud_disabled=$true; inference_profile=$InferenceProfile } | ConvertTo-Json | Set-Content -LiteralPath $factttlStateFile -Encoding utf8
 Write-Host 'Motore locale pronto: qwen3:4b. Configura FactTTL con --news-model qwen3:4b.'

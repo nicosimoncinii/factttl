@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
 
+from factttl.browser_product import offer_identity, validate_observations
 from factttl.message_verifier import normalize_preferences, verify_message
 from factttl.verification_store import VerificationStore
 
@@ -255,9 +256,12 @@ def create_bridge_server(
 
         def do_OPTIONS(self) -> None:
             # Browser preflight does not carry bearer auth; it grants no operation.
-            valid_route = self.path in {"/verify", "/health", "/jobs"} or bool(
-                re.fullmatch(r"/jobs/[A-Za-z0-9_-]{24}(?:/cancel)?", self.path)
-            )
+            valid_route = self.path in {
+                "/verify",
+                "/health",
+                "/jobs",
+                "/context",
+            } or bool(re.fullmatch(r"/jobs/[A-Za-z0-9_-]{24}(?:/cancel)?", self.path))
             if not self._origin_ok() or not valid_route:
                 self._send(403, {"error": "Origin rejected"})
                 return
@@ -347,7 +351,7 @@ def create_bridge_server(
                         },
                     )
                 return
-            if self.path not in {"/verify", "/jobs"}:
+            if self.path not in {"/verify", "/jobs", "/context"}:
                 self._send(404, {"error": "Unknown route"})
                 return
             if self.headers.get("Transfer-Encoding") is not None:
@@ -382,6 +386,19 @@ def create_bridge_server(
                 data = json.loads(raw)
                 if not isinstance(data, dict):
                     raise ValueError("request must be a JSON object")
+                if self.path == "/context":
+                    if set(data) - {"query", "urls", "limit"}:
+                        raise ValueError("unknown context field")
+                    context_query = data.get("query")
+                    if not isinstance(context_query, str):
+                        raise ValueError("context query must be a string")
+                    self._send(
+                        200,
+                        store.context(
+                            context_query, data.get("urls"), data.get("limit", 8)
+                        ),
+                    )
+                    return
                 identifier = data.get("id")
                 if (
                     not isinstance(identifier, str)
@@ -400,6 +417,20 @@ def create_bridge_server(
                 ):
                     raise ValueError("message payload exceeds limits")
                 preferences = normalize_preferences(data.get("preferences"))
+                browser_observations = validate_observations(
+                    data.get("browser_observations")
+                )
+                requested_products = {offer_identity(url) for url in links}
+                if any(
+                    offer_identity(str(record["url"])) not in requested_products
+                    for record in browser_observations
+                ):
+                    raise ValueError("browser observation must match a requested link")
+                browser_options: dict[str, Any] = (
+                    {"browser_observations": browser_observations}
+                    if browser_observations
+                    else {}
+                )
                 if self.path == "/jobs":
                     if not job_slots.acquire(blocking=False):
                         self._send(429, {"error": "Job capacity reached; retry later"})
@@ -416,6 +447,7 @@ def create_bridge_server(
                                 store,
                                 cancellation_event=job.cancellation,
                                 preferences=preferences,
+                                **browser_options,
                             )
                             job.future.add_done_callback(
                                 lambda future: job_slots.release()
@@ -428,7 +460,9 @@ def create_bridge_server(
                         202, {"id": identifier, "job_id": job_id, "status": "PENDING"}
                     )
                     return
-                result = verify_message(text, links, store, preferences=preferences)
+                result = verify_message(
+                    text, links, store, preferences=preferences, **browser_options
+                )
                 self._send(200, {"id": identifier, **result})
             except (ValueError, UnicodeError, TypeError):
                 self._send(400, {"error": "Invalid JSON or message payload"})

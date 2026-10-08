@@ -13,6 +13,9 @@ source-anchored semantic assessments supplied by the calling AI. The browser
 bridge can additionally call an explicitly configured local Ollama model;
 this is a separate opt-in behavior described below. No paid search API is used.
 
+Those requests use the backend fetcher. The optional browser offer reader
+described below uses the user's existing Amazon browser session instead.
+
 The private tunnel exposes this one user's store to connected clients. It
 provides no per-user isolation inside the server. Use it only in your personal
 testing context, on loopback behind the access-controlled tunnel. Production
@@ -56,6 +59,29 @@ Startup `-DisableNews` disables both local news analysis and external discovery,
 overriding any previously saved Bing choice; restart an active bridge to apply it.
 Turning off FactTTL in a chat removes indicators and cancels queued work;
 requests already in progress may have reached their destination.
+
+## Browser product offers and prompt memory
+
+For an Amazon product link in an enabled chat, the extension can open an
+inactive product tab, read the rendered primary offer and close that tab.
+The browser uses its normal session and selected marketplace. The reader
+collects only the product title, ASIN, URL, displayed price/currency,
+availability and any displayed reference price. These fields go to the
+authenticated local bridge. It does not collect addresses or account details,
+purchase anything, select a different seller or bypass CAPTCHA. Amazon host
+permissions are limited to the six supported marketplaces. Public backend
+fetching remains a fallback when the browser cannot read the offer.
+
+With the separate memory switch enabled, an explicit user Send or plain Enter
+looks up relevant stored checks locally. The extension adds a visible, quoted
+FactTTL block to that same outgoing message. The selected chat provider thus
+receives the relevant assertion, observed value, source URL, status and
+expiry along with the user's message. The lookup itself contacts only the
+local bridge. No messages are sent on a timer or without the user's send
+action. Turning memory or FactTTL off removes an unsent block owned by
+FactTTL; if that block was edited and cannot be removed safely, sending is
+blocked with an explanation. The extension does not alter the provider's
+model weights or permanent memory. See [prompt memory](prompt-memory.md).
 
 ## Current behavior
 

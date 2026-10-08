@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from factttl.browser_product import offer_identity
 from factttl.verification import VerificationResult, parse_timestamp, validate_url
 
 
@@ -392,6 +393,210 @@ class VerificationStore:
 
     def close(self) -> None:
         """Connections close after every operation; provided for lifecycle callers."""
+
+    def context(
+        self, query: str, urls: list[str] | None = None, limit: int = 8
+    ) -> dict[str, Any]:
+        """Return bounded relevant data for an explicitly enabled prompt attachment.
+
+        No fetching or inference occurs. Source prose, quotes and rationale are
+        deliberately excluded; retained claim text is untrusted quoted data.
+        """
+        if not isinstance(query, str) or not 1 <= len(query.strip()) <= 2000:
+            raise ValueError("query must contain 1 to 2000 characters")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 8:
+            raise ValueError("limit must be an integer between 1 and 8")
+        if urls is None:
+            urls = []
+        if not isinstance(urls, list) or len(urls) > 10:
+            raise ValueError("urls must contain at most 10 identifiers")
+        canonical = {_normalized_url(url) for url in urls}
+        terms = set(re.findall(r"\w{3,}", query.casefold()))
+        terms -= {
+            "the",
+            "and",
+            "for",
+            "with",
+            "che",
+            "per",
+            "con",
+            "una",
+            "sono",
+            "come",
+            "della",
+            "delle",
+            "questo",
+            "quello",
+            "vorrei",
+            "puoi",
+            "prezzo",
+            "price",
+            "disponibile",
+            "disponibilità",
+            "availability",
+            "stock",
+            "notizia",
+            "notizie",
+            "news",
+            "ricontrolla",
+            "verifica",
+            "controlla",
+            "attuale",
+            "prodotto",
+            "product",
+            "discount",
+            "sconto",
+            "buy",
+            "compra",
+            "acquista",
+            "qual",
+            "quale",
+            "costa",
+            "costs",
+            "quanto",
+            "mostra",
+            "trova",
+            "dammi",
+        }
+        terms = set(sorted(terms, key=lambda value: (-len(value), value))[:20])
+        now = datetime.now(UTC)
+        selected: list[tuple[int, dict[str, Any]]] = []
+        seen: set[tuple[object, ...]] = set()
+        with closing(self._connect()) as db, db:
+            db.execute("BEGIN")
+            rows = db.execute(
+                "SELECT c.claim_id, c.url, c.blocked, o.result_json "
+                "FROM claims c JOIN observations o ON o.id=c.latest_id "
+                "ORDER BY o.observed_at DESC, c.latest_id DESC LIMIT 500"
+            ).fetchall()
+            for row in rows:
+                result = json.loads(row["result_json"])
+                title = " ".join(
+                    str(item.get("product_title") or item.get("title", ""))[:160]
+                    for item in result.get("evidence", [])
+                )[:320]
+                searchable = " ".join(
+                    [row["url"], str(result.get("claim_text") or ""), title]
+                ).casefold()
+                exact = row["url"] in canonical
+                searchable_terms = set(re.findall(r"\w{3,}", searchable))
+                matched = len(terms & searchable_terms)
+                if not exact and not matched:
+                    continue
+                context_key: tuple[object, ...]
+                if result["kind"] in {
+                    "product_price",
+                    "product_availability",
+                    "product_discount",
+                }:
+                    identity: object = offer_identity(row["url"]) or row["url"]
+                    context_key = (identity, result["kind"])
+                else:
+                    context_key = (
+                        row["url"],
+                        result["kind"],
+                        " ".join(
+                            str(result.get("claim_text") or "").split()
+                        ).casefold(),
+                    )
+                if context_key in seen:
+                    continue
+                # Rows are newest first: an older assertion about the same offer
+                # must not shadow its current property or resurrect old support.
+                seen.add(context_key)
+                view = self._view(db, row["claim_id"], now)
+                if (
+                    result["outcome"] not in {"SUPPORTED", "CONTRADICTED"}
+                    and not row["blocked"]
+                ):
+                    continue
+                fresh = (
+                    parse_timestamp(result["observed_at"])
+                    <= now
+                    < parse_timestamp(view["expires_at"])
+                )
+                observed_value = _context_value(
+                    result["kind"], result.get("observed_value")
+                )
+                live_property_evidence = any(
+                    evidence.get("provider") == "live_public_web"
+                    for evidence in result["evidence"]
+                )
+                finding = {
+                    "claim_id": view["claim_id"],
+                    "url": row["url"],
+                    "property": result["kind"],
+                    "outcome": result["outcome"],
+                    "observed_at": result["observed_at"],
+                    "expires_at": view["expires_at"],
+                    "freshness": "current"
+                    if (
+                        parse_timestamp(result["observed_at"])
+                        <= now
+                        < parse_timestamp(view["expires_at"])
+                    )
+                    else "expired",
+                    "usable_as_current_fact": view["usable_as_current_fact"],
+                    "assertion_supported": view["usable_as_current_fact"],
+                    "observed_value_usable_as_current_fact": bool(
+                        fresh
+                        and observed_value is not None
+                        and live_property_evidence
+                        and result["outcome"] in {"SUPPORTED", "CONTRADICTED"}
+                    ),
+                    "source_scope": "browser_current_offer"
+                    if any(
+                        evidence.get("source") == "browser_rendered_amazon"
+                        and evidence.get("scope") == "browser_current_offer"
+                        for evidence in result["evidence"]
+                    )
+                    else "public_source_property"
+                    if live_property_evidence
+                    else "current_source_consistency",
+                    "do_not_reuse_prior_assertion": view[
+                        "do_not_reuse_prior_assertion"
+                    ],
+                    "scope": {
+                        key: value
+                        for key, value in view["assertion_scope"].items()
+                        if key != "expected_value"
+                    },
+                    "expected_value": _context_value(
+                        result["kind"], result.get("expected_value")
+                    ),
+                    "observed_value": observed_value,
+                }
+                if result["kind"] in {"news", "claim"}:
+                    finding["claim_text"] = " ".join(
+                        str(result.get("claim_text") or "").split()
+                    )[:400]
+                selected.append((int(exact) * 100 + matched, finding))
+        selected.sort(key=lambda entry: entry[0], reverse=True)
+        return {
+            "findings": [item for _, item in selected[:limit]],
+            "evaluated_at": now.isoformat(),
+            "scope": "local_saved_observations; source-relative, not universal truth",
+            "untrusted_data": True,
+            "network_requests": False,
+            "search_window": "500 latest local claims",
+        }
+
+
+def _context_value(kind: str, value: object) -> str | None:
+    """Expose typed properties, never arbitrary source sentences as a value."""
+    if not isinstance(value, str):
+        return None
+    if kind in {"link_available", "product_availability"}:
+        return value if value in {"available", "unavailable", "true", "false"} else None
+    if kind == "product_price" and re.fullmatch(
+        r"[0-9]{1,9}(?:[.,][0-9]{1,4})?(?: [A-Z]{3})?", value
+    ):
+        return value
+    if kind == "product_discount" and re.fullmatch(
+        r"[0-9]{1,3}(?:[.,][0-9]{1,2})?%?|true|false", value
+    ):
+        return value
+    return None
 
 
 Store = VerificationStore

@@ -51,6 +51,7 @@
   </style>
   <script src="/demo.js" defer></script>
   <script src="/item-ui.js" defer></script>
+  <script src="/memory.js" defer></script>
   <script src="/content.js" defer></script>
 </head>
 <body>
@@ -87,6 +88,13 @@
       <div data-markdown-text-style="assistant-message" class="answer" data-demo="generic">
         <p>Il direttore attuale di questa società si chiama Mario Rossi.</p>
       </div>
+    </section>
+    <section class="turn">
+      <div class="role">Prova della memoria · invio solo locale</div>
+      <p>Questo esempio mostra il messaggio con le verifiche allegate. Non lo invia a ChatGPT, Claude o Gemini.</p>
+      <textarea id="prompt-textarea" placeholder="Chiedi di ricontrollare il prezzo della ESP32" style="width:100%;min-height:85px"></textarea>
+      <button id="demo-send" data-testid="send-button" type="button">Prepara messaggio con memoria</button>
+      <pre id="demo-outgoing" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
     </section>
     <footer>Attiva FactTTL con l’interruttore in basso a sinistra. Clicca un pulsante di stato per aprire le prove. Spegnendolo, i pulsanti spariscono.</footer>
   </main>

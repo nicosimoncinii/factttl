@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FactTTL",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Verifiche locali accanto ai riferimenti di ChatGPT, Claude e Gemini, attivabili per chat.",
   "browser_specific_settings": {
     "gecko": {
@@ -18,7 +18,19 @@
     "storage"
   ],
   "host_permissions": [
-    "http://127.0.0.1:8765/*"
+    "http://127.0.0.1:8765/*",
+    "https://www.amazon.it/*",
+    "https://www.amazon.com/*",
+    "https://www.amazon.co.uk/*",
+    "https://www.amazon.de/*",
+    "https://www.amazon.fr/*",
+    "https://www.amazon.es/*",
+    "https://amazon.it/*",
+    "https://amazon.com/*",
+    "https://amazon.co.uk/*",
+    "https://amazon.de/*",
+    "https://amazon.fr/*",
+    "https://amazon.es/*"
   ],
   "background": {
     "scripts": [
@@ -36,10 +48,32 @@
       ],
       "js": [
         "item-ui.js",
+        "memory.js",
         "content.js"
       ],
       "css": [
         "content.css"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://www.amazon.it/*",
+        "https://www.amazon.com/*",
+        "https://www.amazon.co.uk/*",
+        "https://www.amazon.de/*",
+        "https://www.amazon.fr/*",
+        "https://www.amazon.es/*",
+        "https://amazon.it/*",
+        "https://amazon.com/*",
+        "https://amazon.co.uk/*",
+        "https://amazon.de/*",
+        "https://amazon.fr/*",
+        "https://amazon.es/*"
+      ],
+      "js": [
+        "merchant.js"
       ],
       "run_at": "document_idle",
       "all_frames": false

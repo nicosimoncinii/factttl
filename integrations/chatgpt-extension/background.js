@@ -9,6 +9,67 @@ const LANGUAGES = new Set(["it", "en", "de", "fr", "es"]);
 let preferences = localePreferences();
 
 const BRIDGE = "http://127.0.0.1:8765";
+const AMAZON_HOSTS = new Set(["amazon.it", "amazon.com", "amazon.co.uk", "amazon.de", "amazon.fr", "amazon.es"]);
+const merchantCache = new Map();
+function merchantKey(value) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/^www\./, "");
+    const asin = url.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/.]|$)/i)?.[1]?.toUpperCase();
+    if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443") || !AMAZON_HOSTS.has(host) || !asin) return null;
+    // Variant/seller query parameters retain their scope; no different offer reuse.
+    const tracking = new Set(["ref", "ref_", "tag", "linkcode", "creative", "creativeasin", "camp", "ascsubtag"]);
+    const parameters = [...url.searchParams].filter(([name]) => !tracking.has(name.toLowerCase())).sort(([a, x], [b, y]) => a.localeCompare(b) || x.localeCompare(y));
+    return `${host}/${asin}?${new URLSearchParams(parameters)}`;
+  } catch { return null; }
+}
+let merchantBusy = false;
+async function observeMerchant(url, signal) {
+  const key = merchantKey(url);
+  if (!key || typeof extensionAPI.tabs.create !== "function") return null;
+  const cached = merchantCache.get(key);
+  if (cached && Date.now() - cached.time < 60000) return {...cached.value};
+  let tab;
+  try {
+    if (signal.aborted) throw aborted();
+    tab = await extensionAPI.tabs.create({url, active: false});
+    const deadline = Date.now() + 22000;
+    while (Date.now() < deadline) {
+      if (signal.aborted) throw aborted();
+      try {
+        const value = await extensionAPI.tabs.sendMessage(tab.id, {type: "READ_PRODUCT_OFFER"});
+        if (value && merchantKey(value.url) === key && value.source === "browser_rendered_amazon" && ["OBSERVED", "BLOCKED"].includes(value.status)) {
+          if (value.status === "OBSERVED") {
+            if (merchantCache.size >= 32) merchantCache.delete(merchantCache.keys().next().value);
+            merchantCache.set(key, {time: Date.now(), value});
+          }
+          return value;
+        }
+      } catch { /* Page/content script may still be loading; never solve a challenge. */ }
+      await pause(500, signal);
+    }
+    return null;
+  } finally {
+    if (tab?.id !== undefined) await extensionAPI.tabs.remove(tab.id).catch(() => {});
+  }
+}
+async function merchantObservations(request, signal) {
+  const urls = [...new Map(request.links.filter(merchantKey).map(url => [merchantKey(url), url])).values()].slice(0, 2);
+  const until = Date.now() + 5000;
+  while (merchantBusy && Date.now() < until) await pause(200, signal);
+  if (signal.aborted) throw aborted();
+  if (merchantBusy || !urls.length) return [];
+  merchantBusy = true;
+  try {
+    const values = [];
+    for (const url of urls) {
+      if (signal.aborted) throw aborted();
+      const value = await observeMerchant(url, signal);
+      if (value) values.push(value);
+    }
+    return values;
+  } finally {merchantBusy = false;}
+}
 const active = new Map();
 const epochs = new Map();
 const chats = new Map();
@@ -328,6 +389,19 @@ async function handle(message, sender) {
       return {...safeError(error, payload), configured: true};
     }
   }
+
+  if (message.type === "GET_MEMORY_CONTEXT") {
+    if (!isChat || !validId(payload.chatId) || chats.get(payload.chatId) !== true ||
+        typeof payload.query !== "string" || !payload.query.trim() || payload.query.length > 2000 ||
+        (payload.urls && (!Array.isArray(payload.urls) || payload.urls.length > 10 || payload.urls.some(url => typeof url !== "string" || url.length > 4096)))) {
+      return fail("DISABLED", "Memoria non disponibile per questa chat.", payload);
+    }
+    try {
+      const context = await bridgeRequest("/context", token, new AbortController(), {query: payload.query, urls: payload.urls || [], limit: 6}, 3500);
+      if (chats.get(payload.chatId) !== true) return fail("DISABLED", "FactTTL disattivato.");
+      return {ok: true, context};
+    } catch (error) { return safeError(error, payload); }
+  }
   if (message.type !== "VERIFY_MESSAGE" || !isChat) return fail("INVALID_MESSAGE", "Richiesta non consentita.");
   let request;
   try {
@@ -344,6 +418,8 @@ async function handle(message, sender) {
   const activeRequest = {controller, chatId: request.chatId, tabId: sender.tab.id};
   active.set(key, activeRequest);
   try {
+    const observations = await merchantObservations(request, controller.signal);
+    if (observations.length) request.browser_observations = observations;
     const result = await verificationJob(token, controller, request, activeRequest);
     if (controller.signal.aborted || chats.get(request.chatId) !== true || (epochs.get(request.chatId) || 0) !== epoch) {
       return fail("CANCELLED", "Verifica annullata.", request);

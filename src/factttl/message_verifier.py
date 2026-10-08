@@ -11,6 +11,11 @@ from datetime import UTC, datetime
 from threading import Event, Lock
 from urllib.parse import urlsplit
 
+from factttl.browser_product import (
+    offer_identity,
+    validate_observations,
+    verify_browser_product,
+)
 from factttl.verification import VerificationResult, parse_timestamp
 from factttl.verification_store import VerificationStore
 from factttl.web_verifier import read_source_evidence, verify_url
@@ -18,7 +23,7 @@ from factttl.web_verifier import read_source_evidence, verify_url
 _URL = re.compile(r"https?://[^\s<>\]\)\"']+")
 _PRICE = re.compile(
     r"(?<![\d.,])(?:€\s*(\d{1,6}(?:[.,]\d{1,2})?)"
-    r"|(\d{1,6}(?:[.,]\d{1,2})?)\s*(?:€|EUR\b))(?![\d.,])",
+    r"|(\d{1,6}(?:[.,]\d{1,2})?)\s*(?:€|EUR\b))(?!\d|[.,]\d)",
     re.I,
 )
 _NEGATIVE = re.compile(
@@ -56,6 +61,91 @@ _LABELS = {
 COUNTRIES = frozenset({"IT", "US", "GB", "DE", "FR", "ES"})
 LANGUAGES = frozenset({"it", "en", "de", "fr", "es"})
 _LOCAL_INFERENCE_LOCK = Lock()
+_PUBLIC_GEOGRAPHY = re.compile(
+    r"\b(?:Italia|Italy|Stati Uniti|United States|USA|United Kingdom|Regno Unito|"
+    r"Francia|France|Germania|Germany|Spagna|Spain|Unione Europea|European Union|"
+    r"Toscana|Lombardia|Lazio|Piemonte|Veneto|Emilia.Romagna|Liguria|Marche|"
+    r"Umbria|Abruzzo|Molise|Puglia|Basilicata|Calabria|Campania|Sicilia|Sardegna|"
+    r"Trentino.Alto Adige|Friuli.Venezia Giulia|Valle d.Aosta)\b",
+    re.I,
+)
+_PUBLIC_ENTITY = re.compile(
+    r"\b(?:NASA|ESA|ONU|UN|UE|EU|OMS|WHO|ISTAT|ISS|FBI|NATO|Mozilla|Firefox|"
+    r"Microsoft|Windows|Apple|Google|Chrome|Android|OpenAI|ChatGPT|Meta|IBM|"
+    r"AMD|Intel|Samsung|Nvidia|Amazon|SpaceX|Tesla|Python)\b|"
+    r"\b(?:governo|government|ministero|ministry|parlamento|parliament|"
+    r"comune di|regione|European Commission|Commissione Europea)\b",
+    re.I,
+)
+_PUBLIC_ROLE = re.compile(
+    r"\b(?:presidente|president|primo ministro|prime minister|ministro|minister|"
+    r"sindaco|mayor|governatore|governor|CEO|amministratore delegato)\b",
+    re.I,
+)
+_PUBLIC_LAW = re.compile(
+    r"\b(?:obbligator[ioae]+|obbligo|mandatory|required|legge|law|decreto|"
+    r"regolamento|regulation|vietat[oa]|proibit[oa]|entra in vigore|"
+    r"takes effect|must)\b",
+    re.I,
+)
+_PUBLIC_RELEASE = re.compile(
+    r"\b(?:rilasciat[oa]|rilascia|released|release|releases|annunci[oa]|"
+    r"annunciat[oa]|announced|announces|pubblicat[oa]|lanciat[oa]|lancia|"
+    r"launched|launches|versione|version|aggiornamento|update)\b",
+    re.I,
+)
+_NONPUBLIC_OR_OPINION = re.compile(
+    r"\b(?:io|noi|voi|mio|mia|miei|mie|tuo|tua|tuoi|tue|nostro|nostra|my|our|your|"
+    r"amico|amica|collega|cliente|appuntamento|domicilio|password|segreto|"
+    r"privat[oa]|private|questa azienda|questa societ[àa]|this company|"
+    r"secondo me|penso|credo|ritengo|preferisco|mi piace|I think|I believe|"
+    r"in my opinion|migliore|peggiore|best|worst)\b",
+    re.I,
+)
+
+
+def _public_unlinked_claim(sentence: str) -> bool:
+    """Recognize bounded public categories, without an extra model round trip.
+
+    Unrecognized subjects remain unverified. This is a conservative category
+    gate, not general entity recognition or perfect private-data detection.
+    """
+    if (
+        not 15 <= len(sentence) <= 400
+        or "?" in sentence
+        or _CONDITIONAL.search(sentence)
+        or _NONPUBLIC_OR_OPINION.search(sentence)
+        or sentence.lstrip().startswith(">")
+        or re.match(
+            r"\s*(?:verifica|controlla|check|verify|ipotizziamo|suppose)\b",
+            sentence,
+            re.I,
+        )
+    ):
+        return False
+    if re.match(
+        r"\s*(?:(?:ho|abbiamo|sono|siamo)\b|I\s+(?:am|have|will)|We\s+(?:are|have))",
+        sentence,
+        re.I,
+    ):
+        return False
+    geography = bool(_PUBLIC_GEOGRAPHY.search(sentence))
+    entity = bool(_PUBLIC_ENTITY.search(sentence))
+    category = (
+        bool(_PUBLIC_ROLE.search(sentence))
+        and (geography or entity)
+        or bool(_PUBLIC_LAW.search(sentence))
+        and (geography or entity)
+        or bool(_PUBLIC_RELEASE.search(sentence))
+        and entity
+        or bool(_NEWS.search(sentence))
+        and entity
+    )
+    if not category:
+        return False
+    from factttl.source_discovery import public_topic_query
+
+    return public_topic_query(sentence) is not None
 
 
 def _analysis_excerpt(text: str, claim: str) -> str:
@@ -169,6 +259,7 @@ def _news_observation(
                     language=language or "it",
                     country=country,
                     source_observed_at=observed,
+                    source_published_at=published,
                 )
             finally:
                 _LOCAL_INFERENCE_LOCK.release()
@@ -213,6 +304,8 @@ def _news_observation(
                 "model": assessment.get("model"),
                 "assessment": outcome,
                 "semantic_assessment": outcome,
+                "assessment_rationale": rationale,
+                "error_reason": assessment.get("error_reason"),
                 "citations": citations if isinstance(citations, list) else [],
                 "limitation": (
                     "Semantic consistency with the explicitly selected excerpt; "
@@ -243,6 +336,7 @@ def verify_message(
     *,
     cancellation_event: Event | None = None,
     preferences: dict[str, str] | None = None,
+    browser_observations: object = None,
 ) -> dict[str, object]:
     """Check links and narrowly linked stock/price statements, never entire truth.
 
@@ -288,6 +382,12 @@ def verify_message(
         )
 
     region = normalize_preferences(preferences)
+    observations = validate_observations(browser_observations)
+    observation_by_product = {
+        offer_identity(str(item["url"])): item for item in observations
+    }
+    if len(observation_by_product) != len(observations):
+        raise ValueError("Duplicate browser observations for the same product")
     language = region["language"] if preferences is not None else None
     if not isinstance(text, str) or len(text) > 20000:
         raise ValueError("text must contain at most 20000 characters")
@@ -323,15 +423,11 @@ def verify_message(
         if not re.search(r"\w", prose):
             continue
         covered = prose
-        if discovery_enabled and not fragment_urls and _NEWS.search(prose):
-            # Select at most one explicitly marked news sentence, never the
-            # entire message or a generic personal assertion without a source.
+        if discovery_enabled and not fragment_urls:
+            # Select a bounded sentence in recognized public categories, never
+            # the entire message or an unknown personal/corporate assertion.
             for sentence in re.split(r"(?<=[.!?])\s+", prose.strip()):
-                if (
-                    _NEWS.search(sentence)
-                    and not _CONDITIONAL.search(sentence)
-                    and "?" not in sentence
-                ):
+                if _public_unlinked_claim(sentence):
                     unlinked_news.append(sentence)
                     break
         semantic_candidate = (
@@ -561,26 +657,16 @@ def verify_message(
             results.append(observe_news(source_url, claim))
         verdicts = {result.outcome for result in results}
         conflict = {"SUPPORTED", "CONTRADICTED"}.issubset(verdicts)
-        # Absence of agreement is not corroboration. All supplied sources must
-        # be decisive and agree for a grouped assessment to be decisive.
-        combined = (
-            next(iter(verdicts))
-            if len(results) == len(source_urls)
-            and len(verdicts) == 1
-            and verdicts <= {"SUPPORTED", "CONTRADICTED"}
-            and not any(
-                item.get("source_analysis_truncated")
-                for result in results
-                for item in result.evidence
-            )
-            else "INCONCLUSIVE"
-        )
+        # A grounded source verdict remains useful when another page is empty
+        # or an explicitly partial excerpt was used. This is consistency with
+        # inspected evidence, never completeness or independent truth.
+        decisive = [
+            result
+            for result in results
+            if result.outcome in {"SUPPORTED", "CONTRADICTED"}
+        ]
+        combined = decisive[0].outcome if decisive and not conflict else "INCONCLUSIVE"
         discovery_info = discovery_results.get(claim)
-        if discovery_info and (
-            discovery_info.get("status") != "FOUND"
-            or not discovery_info.get("selected_source_count")
-        ):
-            combined = "INCONCLUSIVE"
         merged = [item for result in results for item in result.evidence]
         if discovery_info:
             selected_urls = discovery_info["selected_urls"]
@@ -612,18 +698,26 @@ def verify_message(
         for result in results:
             grouped_results[(result.url, claim)] = replace(
                 result,
-                outcome=combined,
+                outcome="INCONCLUSIVE" if conflict else result.outcome,
                 rationale=(
-                    "Le fonti fornite sono in conflitto: non usare questa "
-                    "affermazione come confermata."
-                    if conflict
-                    else "Confronto tra le fonti fornite: "
-                    + (
-                        "concordano sull'affermazione."
-                        if combined == "SUPPORTED"
-                        else "contraddicono l'affermazione."
-                        if combined == "CONTRADICTED"
-                        else "prove incomplete; affermazione non confermata."
+                    result.rationale
+                    if result.outcome not in {"SUPPORTED", "CONTRADICTED"}
+                    and not conflict
+                    else (
+                        "Le fonti fornite sono in conflitto: non usare questa "
+                        "affermazione come confermata."
+                        if conflict
+                        else "Confronto tra le fonti fornite: "
+                        + (
+                            f"{len(decisive)} fonte/i letta/e supportano "
+                            "l'affermazione; "
+                            "il giudizio riguarda solo le prove citate."
+                            if combined == "SUPPORTED"
+                            else f"{len(decisive)} fonte/i letta/e contrastano con "
+                            "l'affermazione; il giudizio riguarda solo le prove citate."
+                            if combined == "CONTRADICTED"
+                            else "prove incomplete; affermazione non confermata."
+                        )
                     )
                 ),
                 evidence=[
@@ -634,6 +728,35 @@ def verify_message(
                         "supplied_source_count": len(source_urls),
                         "conflicting_sources": conflict,
                         "independence_established": False,
+                        "assessment": combined,
+                        "assessment_scope": "inspected_evidence_consistency",
+                        "supporting_source_count": sum(
+                            r.outcome == "SUPPORTED" for r in results
+                        ),
+                        "contradicting_source_count": sum(
+                            r.outcome == "CONTRADICTED" for r in results
+                        ),
+                        "inconclusive_source_count": sum(
+                            r.outcome not in {"SUPPORTED", "CONTRADICTED"}
+                            for r in results
+                        ),
+                        "omitted_source_count": len(source_urls)
+                        - len(results)
+                        + sum(
+                            any(
+                                e.get("source_status") == "NOT_FETCHED"
+                                for e in r.evidence
+                            )
+                            for r in results
+                        ),
+                        "corroboration_complete": len(decisive) == len(source_urls)
+                        and len(decisive) >= 2
+                        and not any(
+                            e.get("source_analysis_truncated")
+                            for r in results
+                            for e in r.evidence
+                        ),
+                        "assessment_basis_urls": [r.url for r in decisive],
                     },
                 ],
             )
@@ -647,6 +770,14 @@ def verify_message(
             if kind == "news":
                 result = grouped_results.get((url, context or "")) or observe_news(
                     url, context
+                )
+            elif (
+                kind.startswith("product_")
+                and (observation := observation_by_product.get(offer_identity(url)))
+                is not None
+            ):
+                result = verify_browser_product(
+                    observation, url, kind, expected, context
                 )
             elif language is not None:
                 result = verify_url(url, kind, expected, context, language=language)

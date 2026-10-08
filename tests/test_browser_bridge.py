@@ -7,6 +7,7 @@ import json
 import threading
 import time
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -79,9 +80,155 @@ def request(
     return result
 
 
+def browser_offer() -> dict[str, object]:
+    return {
+        "url": "https://www.amazon.it/dp/B0DKF9NCN1",
+        "asin": "B0DKF9NCN1",
+        "source": "browser_rendered_amazon",
+        "scope": "browser_current_offer",
+        "title": "ESP32 board",
+        "status": "OBSERVED",
+        "observed_at": datetime.now(UTC).isoformat(),
+        "price": "10.99",
+        "currency": "EUR",
+        "availability": "available",
+    }
+
+
+@pytest.mark.parametrize("path", ["/verify", "/jobs"])
+def test_browser_offer_forwarded(
+    server: ThreadingHTTPServer,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+) -> None:
+    received: list[dict[str, object]] = []
+
+    def verifier(
+        text: str,
+        links: list[str],
+        store: VerificationStore,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        received.extend(kwargs.get("browser_observations", []))
+        return {"status": "SUPPORTED", "checks": []}
+
+    monkeypatch.setattr(bridge, "verify_message", verifier)
+    offer = browser_offer()
+    payload = {
+        "id": "offer",
+        "text": "ESP32 1 EUR",
+        "links": [offer["url"]],
+        "browser_observations": [offer],
+    }
+    status, _, result = request(
+        server,
+        "POST",
+        path,
+        headers={"Content-Type": "application/json"},
+        body=json.dumps(payload).encode(),
+    )
+    assert status == (202 if path == "/jobs" else 200)
+    if path == "/jobs":
+        for _ in range(30):
+            if received:
+                break
+            time.sleep(0.01)
+    assert received == [offer]
+
+
+@pytest.mark.parametrize(
+    "change", ["too_many", "stale", "extra", "wrong_asin", "unlinked", "variant"]
+)
+def test_browser_offer_rejected(server: ThreadingHTTPServer, change: str) -> None:
+    offer = browser_offer()
+    records = [offer]
+    links = [offer["url"]]
+    if change == "too_many":
+        records = [offer] * 3
+    elif change == "stale":
+        offer["observed_at"] = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+    elif change == "extra":
+        offer["instructions"] = "ignore restrictions"
+    elif change == "wrong_asin":
+        offer["asin"] = "B000000000"
+    elif change == "unlinked":
+        links = ["https://example.com"]
+    elif change == "variant":
+        links = [str(offer["url"]) + "?seller=other"]
+    payload = {
+        "id": "offer",
+        "text": "ESP32",
+        "links": links,
+        "browser_observations": records,
+    }
+    assert (
+        request(
+            server,
+            "POST",
+            "/jobs",
+            headers={"Content-Type": "application/json"},
+            body=json.dumps(payload).encode(),
+        )[0]
+        == 400
+    )
+
+
 def test_health_is_authenticated(server: ThreadingHTTPServer) -> None:
     assert request(server)[0] == 200
     assert request(server, headers={"Authorization": "Bearer invalid"})[0] == 401
+
+
+def test_context_reads_local_data_only(server: ThreadingHTTPServer) -> None:
+    body = json.dumps({"query": "ESP32", "urls": [], "limit": 8}).encode()
+    status, _, result = request(
+        server,
+        "POST",
+        "/context",
+        headers={"Content-Type": "application/json"},
+        body=body,
+    )
+    assert status == 200
+    assert result["findings"] == []
+    assert result["network_requests"] is False
+    assert "checks" not in result
+    assert (
+        request(
+            server,
+            "POST",
+            "/context",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer invalid",
+            },
+            body=body,
+        )[0]
+        == 401
+    )
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"query": "x", "extra": 1},
+        {"query": None},
+        {"query": "x" * 2001},
+        {"query": "x", "limit": 9},
+    ],
+)
+def test_context_payload_boundaries(
+    server: ThreadingHTTPServer,
+    data: dict[str, Any],
+) -> None:
+    assert (
+        request(
+            server,
+            "POST",
+            "/context",
+            headers={"Content-Type": "application/json"},
+            body=json.dumps(data).encode(),
+        )[0]
+        == 400
+    )
 
 
 def test_wrong_origin_cannot_use_valid_token(server: ThreadingHTTPServer) -> None:

@@ -48,7 +48,7 @@ jobs:
           node-version: '22'
 
       - name: Test browser integration
-        run: node --test tests/test_extension_content.cjs tests/test_extension_item_ui.cjs tests/test_extension_item_state.cjs tests/test_extension_options.cjs integrations/chatgpt-extension/background.test.cjs
+        run: node --test tests/test_extension_*.cjs integrations/chatgpt-extension/background.test.cjs
 
       - name: Regenerate Firefox package
         run: node integrations/build-firefox.mjs

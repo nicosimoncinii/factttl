@@ -28,26 +28,37 @@ stable SDK, a signed Firefox release, or independent verification of world facts
   the fetched source. Conclusions require citations in that source and remain
   attributed to AI source-consistency assessment.
 - Source dates, accessibility and model readiness never prove truth.
-- Optional Bing RSS discovery submits a bounded topic query using the selected
-  country/language. Up to two discovered publisher pages are read through the
-  protected HTTPS fetcher. RSS snippets are not evidence. Search is disabled by
+- Optional Bing RSS discovery submits a bounded topic query; country remains an
+  interpretation/cache hint and language affects the source request, without a
+  guarantee of geographically targeted search. Up to two discovered pages are
+  read through the protected HTTPS fetcher. RSS snippets are not evidence. Search is disabled by
   default and its outbound query is disclosed in settings.
-- Up to three supplied sources for one assertion are compared once each. Conflicts
-  and incomplete comparisons remain inconclusive. Long sources use an explicitly
-  limited 1,500-character excerpt, shown as partial evidence in the UI.
+- Up to three supplied sources for one assertion are compared once each. Decisive
+  conflicts remain inconclusive. Grounded assessments retain their source or
+  excerpt scope when other evidence is missing; unread URLs do not inherit a
+  different source's verdict. Long sources use an explicitly limited contiguous
+  1,500-character window, shown as partial evidence in the UI.
 - Qwen3:4b through local Ollama supports CPU, balanced and extended profiles.
   The full CPU adapter completed a synthetic contradiction check in 30.53 seconds
   on the development PC; this is not an accuracy or universal hardware benchmark.
+- Actual public NASA source checks returned scoped support in 24.44 seconds and
+  contradiction in 21.26 seconds with validated quotations using CPU inference;
+  [useful verification](useful-verification.md) records the assertions and limits.
 
 ## Remaining product work
 
 1. Broaden claim extraction and assess source relevance/independence. Automatic
-   discovery currently recognizes explicit news language; it does not certify
-   every factual sentence or the independence of different publisher domains.
+   discovery recognizes bounded public-role statements, geographically scoped
+   legal/obligation statements, and announcements/releases of recognized public
+   entities even without the word "news" or a supplied URL. Unknown private
+   subjects, opinions, questions and hypotheses are excluded. This conservative
+   category gate does not certify every factual sentence, perfectly detect
+   private information, or establish independence of publisher domains.
 2. Signed Firefox distribution and a simpler normal installation experience.
 3. Locale-specific merchant coverage and delivery destination confirmation.
-4. Host-supported model context: a visual badge alone cannot teach ChatGPT to
-   consult corrections in every future conversation. Currently a correction can
-   be copied explicitly, or retrieved through a selected MCP tool.
+4. Validate prompt attachment across live host editors. FactTTL now retrieves
+   relevant saved findings across chats and attaches them to a user-initiated
+   send when its memory switch is active. This supplies actual prompt context;
+   it does not change the provider's permanent memory or guarantee compliance.
 5. Release implementation, account isolation for shared hosting,
    broader end-to-end coverage across browsers and provider/model evaluations.

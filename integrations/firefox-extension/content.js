@@ -45,9 +45,14 @@
     try {
       const url = new URL(value);
       const host = url.hostname.toLowerCase().replace(/^(?:www|smile)\./, "");
-      if (/(?:^|\.)amazon\.[a-z.]+$/.test(host)) {
+      if (new Set(["amazon.it", "amazon.com", "amazon.co.uk", "amazon.de", "amazon.fr", "amazon.es"]).has(host)) {
         const asin = url.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([a-z0-9]{10})(?:[/.]|$)/i)?.[1];
-        if (asin) return `https://${host}/asin/${asin.toUpperCase()}`;
+        if (asin) {
+          const tracking = new Set(["ref", "ref_", "tag", "linkcode", "creative", "creativeasin", "camp", "ascsubtag"]);
+          const parameters = [...url.searchParams].filter(([name]) => !tracking.has(name.toLowerCase())).sort(([a, x], [b, y]) => a.localeCompare(b) || x.localeCompare(y));
+          const query = new URLSearchParams(parameters).toString();
+          return `https://${host}/asin/${asin.toUpperCase()}${query ? `?${query}` : ""}`;
+        }
       }
       url.hash = "";
       return url.href;
@@ -146,8 +151,10 @@
     try { return await extensionAPI.runtime.sendMessage(message); }
     catch { return {ok: false, message: "Estensione aggiornata: ricarica questa pagina."}; }
   }
+  const memory = typeof FactTTLMemory !== "undefined" ? FactTTLMemory.install({getState: () => ({enabled, chatId: currentChat}), send, control}) : null;
 
   function updateToggle() {
+    memory?.refresh();
     toggle.textContent = enabled ? "● FactTTL attivo" : "○ FactTTL disattivo";
     toggle.setAttribute("aria-checked", String(enabled));
     toggle.disabled = !currentChat;

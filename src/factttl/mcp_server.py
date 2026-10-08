@@ -313,7 +313,14 @@ def _register_verification_tools(server: MCPServer, db_path: Path) -> None:
         A missing record is unverified. Expired support requires a new check.
         This reads this local server's memory, not ChatGPT conversation history.
         """
-        return store.recall(url=url, query=query, limit=limit)
+        recalled = store.recall(url=url, query=query, limit=limit)
+        if query or url:
+            recalled["prompt_context"] = store.context(
+                query=query or url or "",
+                urls=[url] if url else [],
+                limit=min(limit, 8),
+            )
+        return recalled
 
     @server.tool(
         annotations=ToolAnnotations(

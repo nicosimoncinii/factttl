@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $sourceDirectory = [IO.Path]::GetFullPath($PSScriptRoot)
 $projectDirectory = [IO.Path]::GetFullPath((Join-Path $sourceDirectory '../..'))
 $manifest = Get-Content -LiteralPath (Join-Path $sourceDirectory 'manifest.json') -Raw | ConvertFrom-Json -AsHashtable
-$runtimeFiles = @('background.js', 'item-ui.js', 'content.js', 'content.css', 'options.html', 'options.js', 'options.css')
+$runtimeFiles = @('background.js', 'item-ui.js', 'memory.js', 'merchant.js', 'content.js', 'content.css', 'options.html', 'options.js', 'options.css')
 foreach ($runtimeFile in $runtimeFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $sourceDirectory $runtimeFile) -PathType Leaf)) {
         throw "Missing runtime file: $runtimeFile"

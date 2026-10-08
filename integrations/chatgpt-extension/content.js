@@ -257,7 +257,9 @@
 
   async function pump() {
     if (!enabled) return;
-    while (queue.length && running < 2) {
+    // A CPU news assessment can hold the local inference lock for tens of
+    // seconds. Serial requests avoid turning the next item into inference_busy.
+    while (queue.length && running < 1) {
       const job = queue.shift();
       if (job.epoch !== epoch || job.chatId !== currentChat || !job.node.isConnected) continue;
       running += 1;

@@ -152,7 +152,9 @@ restano distinti; lo strumento non effettua acquisti né aggira CAPTCHA.
 
 Le verifiche passano attraverso job locali con risposte HTTP immediate e polling
 progressivo. Non dipendono da una singola richiesta HTTP lunga: ciascuna richiesta
-ha un limite di 10 secondi e il controllo complessivo di 90 secondi. L'annullamento
+ha un limite di 10 secondi e il controllo complessivo di 180 secondi. Le richieste
+di una chat vengono eseguite una alla volta, così un motore CPU impegnato non
+fa fallire subito il controllo successivo. L'annullamento
 del job è cooperativo; se il servizio è irraggiungibile viene tentato per 3 secondi.
 Se la connessione si interrompe proprio mentre il servizio sta creando un job e la
 risposta con il suo identificativo va persa, il job potrebbe non poter essere

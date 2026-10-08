@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 
 from factttl.browser_product import (
     offer_identity,
+    product_identity,
     validate_observations,
     verify_browser_product,
 )
@@ -24,6 +25,11 @@ _URL = re.compile(r"https?://[^\s<>\]\)\"']+")
 _PRICE = re.compile(
     r"(?<![\d.,])(?:€\s*(\d{1,6}(?:[.,]\d{1,2})?)"
     r"|(\d{1,6}(?:[.,]\d{1,2})?)\s*(?:€|EUR\b))(?!\d|[.,]\d)",
+    re.I,
+)
+_APPROXIMATE_PRICE = re.compile(
+    r"\b(?:circa|about|indicativ[oa]|orientativ[oa]|estimated|estimate|starting)\b|"
+    r"[~≈]|\d\s*(?:-|–|—|a|to)\s*\d",
     re.I,
 )
 _NEGATIVE = re.compile(
@@ -475,11 +481,29 @@ def verify_message(
             and not re.search(r"\b(?:19|20)\d{2}\b", prose)
             and not fragment.lstrip().startswith(">")
         )
-        if len(fragment_urls) == 1 and asserted_now:
+        search_link = False
+        if len(fragment_urls) == 1:
+            parts = urlsplit(fragment_urls[0])
+            search_link = (parts.hostname or "").removeprefix("www.") in {
+                "amazon.it",
+                "amazon.com",
+                "amazon.co.uk",
+                "amazon.de",
+                "amazon.fr",
+                "amazon.es",
+            } and (
+                parts.path.rstrip("/") in {"/s", "/gp/search"}
+                or parts.path.startswith("/s/")
+            )
+        if len(fragment_urls) == 1 and asserted_now and not search_link:
             url = fragment_urls[0]
             prices = list(_PRICE.finditer(prose))
-            if len(prices) == 1 and not re.search(
-                r"\b(?:da|from|circa|about)\s*$", prose[: prices[0].start()], re.I
+            if (
+                len(prices) == 1
+                and not _APPROXIMATE_PRICE.search(prose)
+                and not re.search(
+                    r"\b(?:da|from|circa|about)\s*$", prose[: prices[0].start()], re.I
+                )
             ):
                 amount = prices[0].group(1) or prices[0].group(2)
                 price_claim = amount.replace(",", ".") + " EUR"
@@ -555,15 +579,7 @@ def verify_message(
     implicit_stock = "Disponibilità osservata del prodotto suggerito"
     observed_price = "Prezzo osservato senza un prezzo asserito"
     for url in urls:
-        parts = urlsplit(url)
-        if (parts.hostname or "").removeprefix("www.") in {
-            "amazon.it",
-            "amazon.com",
-            "amazon.co.uk",
-            "amazon.de",
-            "amazon.fr",
-            "amazon.es",
-        } and re.search(r"/(?:dp|gp/product)/[A-Za-z0-9]{10}(?:/|$)", parts.path):
+        if product_identity(url) is not None:
             planned = {kind for source, kind, _, _ in specifications if source == url}
             if "product_availability" not in planned:
                 specifications.append(

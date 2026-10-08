@@ -16,6 +16,13 @@ test("a supported link alone gets an accessibility result, never a fact-green ba
   assert.equal(summary.label, "Link accessibile");
 });
 
+test("Amazon search link clearly reports that no specific offer has been selected", () => {
+  const url = "https://www.amazon.it/s?k=esp32";
+  const summary = summarize({checks: [{result: {url, kind: "link_available", outcome: "SUPPORTED"}}]}, url);
+  assert.equal(summary.status, "SEARCH");
+  assert.equal(summary.label, "Ricerca Amazon: nessuna offerta scelta");
+});
+
 test("a news link remains unverified even when the source page is accessible", () => {
   const summary = summarize({
     status: "SUPPORTED",

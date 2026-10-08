@@ -3,7 +3,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const {test} = require("node:test");
-const {chatKey, destinationKey, itemTargets, normalizeChecks, serializeMessage} = require("../integrations/chatgpt-extension/content.js");
+const {chatKey, destinationKey, itemTargets, normalizeChecks, serializeMessage, sourceFor, publicFactCandidate} = require("../integrations/chatgpt-extension/content.js");
 const manifest = require("../integrations/chatgpt-extension/manifest.json");
 
 function text(value) {
@@ -192,4 +192,23 @@ test("serializeMessage strips credentials and excludes non-HTTPS source links", 
   assert.equal(serialized.links.length, 0);
   assert.equal(serialized.text, "private plain http");
   assert.doesNotMatch(serialized.text, /secret|https?:\/\//);
+});
+
+test("table offer serializes name price and link together despite paragraph-wrapped cells", () => {
+  const href = "https://www.amazon.it/dp/B0DKF9NCN1";
+  const anchor = element("a", [text("Acquista"), element("svg", [text("ICON NOISE")])], {href});
+  const linkParagraph = element("p", [anchor]);
+  const row = element("tr", [element("td", [element("p", [text("ESP32 DevKit")])]), element("td", [element("p", [text("9,99 EUR")])]), element("td", [linkParagraph])]);
+  anchor.closest = selector => selector === "tr" ? row : selector === "p, tr" ? linkParagraph : null;
+  assert.equal(sourceFor(anchor), row);
+  const payload = serializeMessage(row);
+  assert.equal(payload.text, `ESP32 DevKit 9,99 EUR [Acquista](${href})`);
+  assert.equal(payload.text.includes("\n"), false);
+  assert.deepEqual(payload.links, [href]);
+});
+
+test("advice disclaimers and opinions do not receive generic unknown badges", () => {
+  for (const value of ["Se vuoi spendere meno, controlla il prezzo prima di acquistare il carrello.", "Ti consiglio un alimentatore adatto al progetto e qualche cavo jumper.", "Secondo me questo kit è il migliore per cominciare con Arduino.", "Prezzi indicativi: la disponibilità può cambiare in qualsiasi momento."]) assert.equal(publicFactCandidate(value), false);
+  assert.equal(publicFactCandidate("NASA ha annunciato il lancio della nuova missione Artemis."), true);
+  assert.equal(publicFactCandidate("In Toscana il nuovo decreto rende obbligatorio questo requisito."), true);
 });

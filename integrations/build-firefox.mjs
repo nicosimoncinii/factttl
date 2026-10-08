@@ -10,9 +10,9 @@ const manifest = JSON.parse(await readFile(join(source, "manifest.json"), "utf8"
 // Firefox uses an event page and its Gecko ID, rather than Chromium's public key.
 delete manifest.key;
 delete manifest.minimum_chrome_version;
-manifest.background = {scripts: ["background.js"]};
+manifest.background = {scripts: ["amazon-url.js", "background.js"]};
 await mkdir(target, {recursive: true});
-for (const name of ["background.js", "item-ui.js", "memory.js", "merchant.js", "content.js", "content.css", "options.js", "options.html", "options.css"]) {
+for (const name of ["amazon-url.js", "background.js", "item-ui.js", "memory.js", "correction.js", "merchant.js", "content.js", "content.css", "options.js", "options.html", "options.css"]) {
   await copyFile(join(source, name), join(target, name));
 }
 await writeFile(join(target, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");

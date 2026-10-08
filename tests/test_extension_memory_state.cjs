@@ -5,9 +5,9 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 
-function harness({enabled = true, deferred = false, ignoreHost = false} = {}) {
+function harness({enabled = true, deferred = false, ignoreHost = false, normalizeWrite = false} = {}) {
   const documentListeners = new Map(), calls = [], hostClicks = [], timers = [];
-  const state = {enabled, chatId: "chat-a"};
+  const state = {enabled, chatId: "chat-a"}; let userSends = 0;
   class Node {
     constructor(tag = "SPAN") {this.tagName = tag; this.listeners = new Map(); this.isConnected = true; this.children = []; this.attributes = {}; this.textContent = "";}
     setAttribute(key, value) {this.attributes[key] = value;}
@@ -23,7 +23,7 @@ function harness({enabled = true, deferred = false, ignoreHost = false} = {}) {
   class TextArea extends Node {
     constructor() {super("TEXTAREA"); this._value = "Vorrei un ESP32 https://www.amazon.it/dp/B0DKF9NCN1";}
     get value() {return this._value;}
-    set value(value) {this._value = value;}
+    set value(value) {this._value = normalizeWrite && value.startsWith("[FactTTL — correzione automatica]") ? value.slice(0, 36) : value;}
   }
   const editor = new TextArea(), button = new Node("BUTTON"), control = new Node("DIV");
   const document = {
@@ -57,8 +57,8 @@ function harness({enabled = true, deferred = false, ignoreHost = false} = {}) {
   });
   vm.runInContext(readFileSync(path.join(__dirname, "../integrations/chatgpt-extension/memory.js"), "utf8"), sandbox);
   const installed = sandbox.FactTTLMemory.install({getState: () => state,
-    control, send: message => {calls.push(message); return deferred ? pending : Promise.resolve({ok: true, context: findings});}});
-  return {state, editor, button, control, calls, hostClicks, event, installed,
+    control, onUserSend: () => {userSends += 1;}, send: message => {calls.push(message); return deferred ? pending : Promise.resolve({ok: true, context: findings});}});
+  return {state, editor, button, control, calls, hostClicks, event, installed, timers, userSends: () => userSends,
     resolve: () => resolveContext({ok: true, context: findings}),
     marker: "[FactTTL — verifiche precedenti]"};
 }
@@ -137,4 +137,48 @@ test("modified owned block prevents sending when memory is switched off", async 
   const event = h.event("click");
   assert.equal(event.defaultPrevented, true);
   assert.equal(h.hostClicks.length, 1);
+});
+
+test("automatic correction uses an empty editor and a visible host send", async () => {
+  const h = harness(); h.editor.value = "";
+  const pending = h.installed.sendCorrection("[FactTTL — correzione automatica]\nDato contestato");
+  assert.equal(h.hostClicks.length, 0); h.timers.at(-1)();
+  assert.equal((await pending).ok, true); assert.equal(h.hostClicks.length, 1);
+  assert.match(h.hostClicks[0], /Dato contestato/);
+});
+test("automatic correction never overwrites a user's open draft", async () => {
+  const h = harness(), original = h.editor.value;
+  assert.equal((await h.installed.sendCorrection("correction")).reason, "draft");
+  assert.equal(h.editor.value, original); assert.equal(h.hostClicks.length, 0);
+});
+for (const change of ["off", "route", "user-edit", "guard"]) test(`automatic editor send stops after ${change} during host render`, async () => {
+  const h = harness(); h.editor.value = ""; let current = true;
+  const pending = h.installed.sendCorrection("[FactTTL — correzione automatica]\nriscontro", () => current);
+  if (change === "off") h.state.enabled = false;
+  if (change === "route") h.state.chatId = "other";
+  if (change === "user-edit") h.editor.value += "\nEdited by user";
+  if (change === "guard") current = false;
+  h.timers.at(-1)(); assert.equal((await pending).ok, false);
+  assert.equal(h.hostClicks.length, 0);
+  if (change === "user-edit") assert.match(h.editor.value, /Edited by user/);
+  else assert.equal(h.editor.value, "");
+});
+test("turning FactTTL off removes an unsent host-ignored automatic correction", async () => {
+  const h = harness({ignoreHost: true}); h.editor.value = "";
+  const pending = h.installed.sendCorrection("[FactTTL — correzione automatica]\nriscontro");
+  h.timers.at(-1)(); await pending; assert.match(h.editor.value, /riscontro/);
+  h.state.enabled = false; h.installed.refresh(); assert.equal(h.editor.value, "");
+});
+
+test("partially written automatic correction is tracked and removed on editor failure", async () => {
+  const h = harness({normalizeWrite: true}); h.editor.value = "";
+  const result = await h.installed.sendCorrection("[FactTTL — correzione automatica]\nA long correction with evidence and sources");
+  assert.equal(result.reason, "editor"); assert.equal(h.editor.value, "");
+  h.state.enabled = false; h.installed.refresh(); assert.equal(h.editor.value, "");
+  assert.equal(h.hostClicks.length, 0);
+});
+test("blocked duplicate sends do not reset the automatic correction budget", async () => {
+  const h = harness({deferred: true}); h.event("click"); h.event("keydown");
+  assert.equal(h.userSends(), 0);
+  h.resolve(); await flush(); assert.equal(h.userSends(), 1);
 });

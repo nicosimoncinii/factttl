@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 from decimal import Decimal
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl, urljoin, urlsplit
 
 from factttl.verification import VerificationResult, parse_timestamp
 
@@ -30,15 +30,63 @@ _TRACKING = {
 }
 
 
+def resolve_product_url(url: str) -> str | None:
+    """Decode only bounded same-marketplace Amazon advertising wrappers.
+
+    This is not a redirect fetcher: short links and arbitrary destinations remain
+    unresolved. Unknown offer parameters on the selected product are preserved.
+    """
+    if not isinstance(url, str) or len(url) > 4096:
+        return None
+    current = url
+    marketplace: str | None = None
+    for _ in range(3):
+        try:
+            parts = urlsplit(current)
+            host = (parts.hostname or "").removeprefix("www.")
+            if (
+                parts.scheme != "https"
+                or parts.port not in {None, 443}
+                or parts.username is not None
+                or parts.password is not None
+                or host not in _HOSTS
+                or any(ord(char) < 32 for char in current)
+                or "\\" in current
+                or (marketplace is not None and host != marketplace)
+            ):
+                return None
+            marketplace = host
+            if re.search(
+                r"/(?:dp|gp/product|gp/aw/d)/[A-Z0-9]{10}(?:[/.]|$)", parts.path, re.I
+            ):
+                return current
+            if not (
+                parts.path == "/sspa/click" or parts.path.startswith("/gp/slredirect/")
+            ):
+                return None
+            targets = [value for key, value in parse_qsl(parts.query) if key == "url"]
+            if len(targets) != 1 or not targets[0] or len(targets[0]) > 4096:
+                return None
+            current = urljoin(current, targets[0])
+        except ValueError:
+            return None
+    return None
+
+
 def offer_identity(url: str) -> tuple[str, str, tuple[tuple[str, str], ...]] | None:
     """Keep unknown offer/variant selectors; ignore only named tracking fields."""
     product = product_identity(url)
     if product is None:
         return None
+    resolved = resolve_product_url(url)
+    if resolved is None:
+        return None
     query = tuple(
         sorted(
             (key, value)
-            for key, value in parse_qsl(urlsplit(url).query, keep_blank_values=True)
+            for key, value in parse_qsl(
+                urlsplit(resolved).query, keep_blank_values=True
+            )
             if key.lower() not in _TRACKING
         )
     )
@@ -47,7 +95,10 @@ def offer_identity(url: str) -> tuple[str, str, tuple[tuple[str, str], ...]] | N
 
 def product_identity(url: str) -> tuple[str, str] | None:
     try:
-        parts = urlsplit(url)
+        resolved = resolve_product_url(url)
+        if resolved is None:
+            return None
+        parts = urlsplit(resolved)
         host = (parts.hostname or "").removeprefix("www.")
         asin = re.search(
             r"/(?:dp|gp/product|gp/aw/d)/([A-Z0-9]{10})(?:[/.]|$)", parts.path, re.I

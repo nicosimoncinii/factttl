@@ -31,8 +31,8 @@
   }
   if (typeof module !== "undefined" && module.exports) module.exports = {memoryBlock, attachMemory, MARKER};
   if (typeof document === "undefined") return;
-  function install({getState, send, control}) {
-    let memoryEnabled = true, bypass = false, busy = false, owned = null;
+  function install({getState, send, control, onUserSend = () => {}}) {
+    let memoryEnabled = true, bypass = false, busy = false, owned = null, autoOwned = null;
     const button = document.createElement("button");
     button.type = "button"; button.className = "factttl-memory-toggle";
     button.setAttribute("role", "switch");
@@ -40,6 +40,7 @@
     const status = document.createElement("span"); status.className = "factttl-memory-status"; status.setAttribute("role", "status");
     const refresh = () => {
       const enabled = getState().enabled;
+      if (!enabled) clearCorrectionDraft();
       const cleaned = enabled && memoryEnabled ? true : removeOwned();
       button.hidden = !enabled;
       status.hidden = !enabled && cleaned;
@@ -76,6 +77,16 @@
       status.textContent = "Rimuovi dalla bozza il blocco FactTTL modificato prima di inviare.";
       return false;
     }
+    function clearCorrectionDraft() {
+      if (!autoOwned) return true;
+      if (!autoOwned.editor.isConnected || !textOf(autoOwned.editor)?.trim()) {autoOwned = null; return true;}
+      const value = textOf(autoOwned.editor);
+      if (value.includes(autoOwned.value) && setText(autoOwned.editor, value.replace(autoOwned.value, "").trim())) {autoOwned = null; return true;}
+      if (autoOwned.sent && !value.includes("[FactTTL — correzione automatica]")) {autoOwned = null; return true;}
+      status.hidden = false;
+      status.textContent = "Rimuovi la correzione FactTTL modificata dalla bozza prima di inviare con lo strumento spento.";
+      return false;
+    }
     async function prepare(target, clicked, draft) {
       const before = {...getState()};
       busy = true; status.textContent = "Recupero verifiche…";
@@ -95,6 +106,8 @@
           status.textContent = "Non riesco ad allegare le verifiche: il messaggio resta in bozza."; return;
         }
         status.textContent = attached !== draft ? "Verifiche allegate al messaggio" : response.ok ? "Nessuna verifica pertinente da allegare" : "Memoria non disponibile: messaggio inviato senza allegato";
+        // Reset the correction budget only when resuming an actual human send.
+        if (!draft.includes("[FactTTL — correzione automatica]")) onUserSend();
         // Resume the user's exact send action; never send without that action.
         bypass = true;
         clicked.click();
@@ -106,11 +119,14 @@
       if (!target || !clicked) return;
       const sending = event.type === "click" ? event.target.closest?.("button") === clicked : event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && (event.target === target || target.contains(event.target));
       if (!sending) return;
-      if ((!getState().enabled || !memoryEnabled) && !removeOwned()) {
+      if (!getState().enabled && !clearCorrectionDraft() || (!getState().enabled || !memoryEnabled) && !removeOwned()) {
         status.hidden = false;
         event.preventDefault(); event.stopImmediatePropagation(); return;
       }
-      if (!getState().enabled || !memoryEnabled) return;
+      if (!getState().enabled || !memoryEnabled) {
+        if (getState().enabled && textOf(target)?.trim() && !textOf(target).includes("[FactTTL — correzione automatica]")) onUserSend();
+        return;
+      }
       const draft = textOf(target);
       if (!draft?.trim() || draft.includes(MARKER)) return;
       event.preventDefault(); event.stopImmediatePropagation();
@@ -119,7 +135,36 @@
     document.addEventListener("click", intercept, true);
     document.addEventListener("keydown", intercept, true);
     refresh();
-    return {refresh};
+    // Autocorrection is separately enabled by the chat control. Reuse the host
+    // editor adapter so a generated follow-up never overwrites a user's draft.
+    async function sendCorrection(value, guard = () => true) {
+      if (busy || !getState().enabled || typeof value !== "string" || !guard()) return {ok: false, reason: "changed"};
+      const target = editor(), before = {...getState()};
+      if (!target || textOf(target)?.trim()) return {ok: false, reason: "draft"};
+      busy = true;
+      try {
+        autoOwned = {editor: target, value, sent: false};
+        let written = false;
+        try {written = setText(target, value);} catch { /* Track a partial controlled-editor write too. */ }
+        if (!written) {
+          autoOwned.value = textOf(target) || "";
+          clearCorrectionDraft();
+          return {ok: false, reason: "editor"};
+        }
+        // Controlled editors often mount their Send button on the next render.
+        await new Promise(resolve => setTimeout(resolve, 120));
+        const clicked = sendButton();
+        if (!clicked || !target.isConnected || textOf(target) !== value || !getState().enabled || before.chatId !== getState().chatId || !guard()) {
+          if (target.isConnected && textOf(target) === value) setText(target, "");
+          return {ok: false, reason: "changed"};
+        }
+        bypass = true;
+        clicked.click();
+        if (autoOwned) autoOwned.sent = true;
+        return {ok: true};
+      } finally {bypass = false; busy = false;}
+    }
+    return {refresh, sendCorrection, clearCorrectionDraft, hasDraft: () => Boolean(textOf(editor() || {tagName: "TEXTAREA", value: ""})?.trim()), isEnabled: () => getState().enabled && memoryEnabled};
   }
   globalThis.FactTTLMemory = {install, memoryBlock, attachMemory};
 })();

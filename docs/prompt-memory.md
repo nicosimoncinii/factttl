@@ -34,7 +34,26 @@ The browser extension now performs this attachment when FactTTL and its
 **Memoria attiva** switch are enabled. It waits for a trusted user Send click or
 plain Enter, retrieves relevant records from `/context`, adds a visible quoted
 JSON block to the outgoing draft and resumes that same send action. It never
-sends a prompt on its own. Draft changes, chat navigation and disconnected
+adds unsolicited prompts in memory-only mode. The separate **Correzione
+automatica** control allows visible follow-ups for a completed current response:
+typed live offer contradictions, grounded source contradictions and Amazon
+search links lacking a selected offer. Findings retain the original URL and
+observed property. The request tells the host model to acknowledge the error,
+replace unavailable offers, preserve the user's budget and constraints, and
+show old and corrected references. Replacement references are checked again.
+No alternative is declared verified just because the host model generated it.
+
+Automatic follow-ups require a visible chat, no active generation, an unchanged
+latest assistant response, and an empty composer. A durable extension ledger
+deduplicates each response across tabs and reloads; a per-request budget allows
+at most two sends until the user next sends a message. Turning off the chat or
+autocorrection cancels preparation. This ledger stores answer hashes and send
+reservations, not message text. The original response is preserved and an
+explicitly attributed FactTTL correction card is appended; a host model response
+arrives as a new conversation turn. This cannot alter an already-generated
+provider message or guarantee the provider obeys a correction request.
+
+Draft changes, chat navigation and disconnected
 editors cancel the preparation. Disabling the tool removes its own unsent block;
 an edited block requires manual cleanup before it can be sent while disabled.
 This influences the context of that prompt, not the provider's permanent memory

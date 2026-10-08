@@ -22,6 +22,7 @@ from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
+from factttl.browser_product import product_identity, resolve_product_url
 from factttl.verification import VerificationResult
 
 MAX_BYTES = 2 * 1024 * 1024
@@ -542,8 +543,8 @@ def _amazon_asin(url: str) -> str | None:
     parts = urlsplit(url)
     if parts.hostname not in _AMAZON_HOSTS:
         return None
-    match = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})(?:/|$)", parts.path, re.I)
-    return match[1].upper() if match else None
+    identity = product_identity(url)
+    return identity[1] if identity else None
 
 
 def _euro_price(text: str) -> Decimal | None:
@@ -734,8 +735,13 @@ def verify_url(
     if claim_text is not None and len(claim_text) > 4000:
         raise ValueError("Claim text exceeds 4000 characters")
     try:
+        fetch_url = (
+            (resolve_product_url(url) or url) if kind.startswith("product_") else url
+        )
         result_url, status, content_type, body = (
-            _fetch(url, language=language) if language is not None else _fetch(url)
+            _fetch(fetch_url, language=language)
+            if language is not None
+            else _fetch(fetch_url)
         )
     except UnsafeURL:
         return finish("ERROR", "Blocked destination: use public HTTPS on port 443")

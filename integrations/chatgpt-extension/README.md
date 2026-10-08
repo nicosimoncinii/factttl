@@ -121,7 +121,24 @@ Le correzioni sono conservate da FactTTL. Con **Memoria attiva**, al tuo prossim
 invio lo strumento allega alla bozza un blocco visibile con i controlli pertinenti:
 affermazione precedente, valore osservato, fonte e scadenza. Questo permette al
 modello di ricevere la correzione anche in una nuova chat attivata. Non modifica
-la memoria interna del provider e non invia messaggi da solo. Spegnere la memoria
+la memoria interna del provider. Con **Correzione automatica**, dopo i controlli
+di una risposta lo strumento può inviare un messaggio visibile al modello: mostra
+i riscontri, chiede di ammettere e correggere il dato errato, sostituire le offerte
+esaurite e ricalcolare il carrello. Le alternative della nuova risposta vengono
+ricontrollate. Un link di ricerca Amazon richiede la selezione di un'offerta
+precisa: aprire i risultati di ricerca non prova prezzo o disponibilità.
+Se manca una prova su un'offerta Amazon, chiede di cercare riscontri o un'altra
+offerta: questa richiesta non dichiara il dato falso o il prodotto esaurito.
+
+Il messaggio originale resta visibile, con una scheda di correzione attribuita
+a FactTTL; lo strumento non riscrive silenziosamente il testo del modello.
+L'invio automatico attende un campo messaggio vuoto, una risposta completa e
+la chat visibile. È limitato a due tentativi per richiesta, con un registro locale
+che evita invii duplicati dopo un ricaricamento. Il modello del provider può
+comunque non seguire la richiesta: le offerte restano segnalate finché nuovi
+riscontri non le confermano. Puoi spegnere l'autocorrezione separatamente.
+
+Spegnere la memoria
 o FactTTL rimuove un suo allegato ancora nella bozza; un allegato modificato va
 rimosso manualmente prima dell'invio con lo strumento spento. Puoi anche usare
 **Copia la correzione per la chat**. Dettagli in [prompt memory](../../docs/prompt-memory.md).
@@ -145,6 +162,9 @@ restano distinti; lo strumento non effettua acquisti né aggira CAPTCHA.
   scelti dalle pagine. Nessun cookie o credenziale di ChatGPT/Amazon viene
   inoltrato al bridge. Il lettore Amazon usa la normale sessione del browser
   sui sei marketplace autorizzati; invia al bridge solo i campi dell'offerta.
+- Con l'autocorrezione attiva il provider riceve i dati e, per notizie contestate,
+  brevi passaggi di prova, in un messaggio visibile. Con la memoria spenta non
+  vengono aggiunte verifiche delle richieste precedenti a quel messaggio.
 - Al tuo invio, il provider della chat riceve anche il blocco delle verifiche
   pertinenti quando la memoria è attiva. Non vengono allegati HTML o citazioni
   integrali delle fonti. Vedi [privacy](../../docs/privacy-and-network.md).

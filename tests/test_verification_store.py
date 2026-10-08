@@ -218,6 +218,24 @@ def test_amazon_different_asin_or_marketplace_is_separate(tmp_path: Path) -> Non
         assert store.recall(url=url)["total"] == 0
 
 
+@pytest.mark.parametrize("marketplace", ["it", "de", "com", "co.uk", "fr", "es"])
+def test_mobile_and_advertising_aliases_preserve_unavailable_offer_memory(
+    tmp_path: Path, marketplace: str
+) -> None:
+    store = VerificationStore(tmp_path / "memory.sqlite3")
+    direct = f"https://www.amazon.{marketplace}/dp/B012345678?seller=SellerA"
+    store.record(observation("CONTRADICTED", provider="user_report", url=direct))
+    aliases = [
+        f"https://amazon.{marketplace}/gp/aw/d/B012345678?seller=SellerA&tag=new",
+        f"https://www.amazon.{marketplace}/sspa/click?url=%2Fdp%2FB012345678%3Fseller%3DSellerA",
+    ]
+    for alias in aliases:
+        recalled = store.recall(url=alias)
+        assert recalled["total"] == 1
+        assert recalled["claims"][0]["do_not_reuse_prior_assertion"] is True
+    assert store.recall(url=direct.replace("SellerA", "SellerB"))["total"] == 0
+
+
 def test_non_amazon_query_parameters_are_preserved(tmp_path: Path) -> None:
     store = VerificationStore(tmp_path / "memory.sqlite3")
     store.record(observation(url="https://merchant.example/product?variant=blue"))

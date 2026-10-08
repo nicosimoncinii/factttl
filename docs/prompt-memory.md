@@ -43,6 +43,15 @@ replace unavailable offers, preserve the user's budget and constraints, and
 show old and corrected references. Replacement references are checked again.
 No alternative is declared verified just because the host model generated it.
 
+The editor adapter waits up to 2.4 seconds for the host's enabled send button,
+submits once and waits up to another 2.4 seconds for acknowledgment: a newly
+posted user message containing the correction, or an empty composer with newly
+started generation and no different new user message. A click or a cleared
+composer alone is not proof of delivery. After an attempted submit with no
+acknowledgment, it keeps the reservation and does not retry that answer: the
+host could accept late. The UI reports an unconfirmed send; a prompt remaining
+in the composer has not been proved delivered to the model.
+
 Automatic follow-ups require a visible chat, no active generation, an unchanged
 latest assistant response, and an empty composer. A durable extension ledger
 deduplicates each response across tabs and reloads; a per-request budget allows

@@ -18,6 +18,11 @@ from factttl.verification import VerificationResult
 def test_opt_in_tools_and_permissions(tmp_path: Path) -> None:
     server = create_server(PolicyConfig({}), tmp_path / "checks.sqlite3")
     tools = {tool.name: tool for tool in asyncio.run(server.list_tools())}
+    assert server.instructions is not None
+    assert (
+        "connection errors do not mean a product is out of stock" in server.instructions
+    )
+    assert "never invent tool calls" in server.instructions
     assert set(tools) == {
         "evaluate_fact_freshness",
         "inspect_live_source",

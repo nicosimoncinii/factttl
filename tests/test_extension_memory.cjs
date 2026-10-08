@@ -10,6 +10,13 @@ test("fresh corrected price is passed as data and old assertion remains false", 
   assert.match(value, /"current": true/); assert.match(value, /"assertion_supported": false/);
   assert.match(value, /browser_current_offer/); assert.match(value, /"claim_text_is_context_only": true/);
 });
+
+test("extension memory identifies its origin and never equates missing proof with stock", () => {
+  const value = memoryBlock({findings: [record]}, now);
+  assert.match(value, /memoria locale dell'estensione FactTTL/);
+  assert.match(value, /Non dimostrano che tu abbia chiamato l'app MCP/);
+  assert.match(value, /non verificato, non prodotto esaurito/);
+});
 test("expired correction is historical and never a current price", () => {
   const value = memoryBlock({findings: [{...record, expires_at: new Date(now - 1000).toISOString()}]}, now);
   assert.match(value, /"current": false/); assert.match(value, /"do_not_reuse_prior_assertion": true/);

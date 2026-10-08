@@ -76,6 +76,22 @@ associazioni del tunnel. Per riprovare, apri FactTTL nei Plugin e scegli
 
 ## Riavvio dopo modifiche
 
+### Distinguere app MCP ed estensione
+
+Il servizio avviato da `scripts/Start-FactTTL-Browser.ps1` ascolta sulla porta
+`8765` ed è usato dall'estensione. Questo script non avvia il server MCP né
+il tunnel. Uno stato collegato nelle opzioni del browser riguarda quel servizio,
+non l'app MCP selezionabile in ChatGPT. Per il percorso HTTP della prova sopra,
+servono anche il server MCP su `8000` e il client tunnel con readiness su `18080`.
+Un controllo fallito o un errore di connessione non indica prodotto esaurito.
+La scadenza della chiave runtime va verificata separatamente; non si può dedurre
+da una risposta del modello o dallo stato del servizio dell'estensione.
+
+L'estensione può trasmettere al modello riscontri tramite memoria e richieste
+visibili di correzione senza usare l'app MCP. **Correzione manuale** disattiva
+questi invii automatici anche se **Memoria attiva** è accesa. Per la modalità
+automatica, seleziona **Correzione automatica** nella chat attivata.
+
 ### Versione con verifica e memoria
 
 La prova personale del 6 ottobre è stata aggiornata per usare

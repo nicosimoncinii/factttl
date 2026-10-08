@@ -41,6 +41,30 @@
     return Array.isArray(entries) ? entries.map(entry => entry.result || entry) : [];
   }
 
+  function hostSearchURL(value) {
+    try {
+      const u = new URL(value);
+      const queries = u.searchParams.getAll("q");
+      return u.protocol === "https:" && !u.username && !u.password && (!u.port || u.port === "443") &&
+        ["chatgpt.com", "www.chatgpt.com", "chat.openai.com"].includes(u.hostname) && u.pathname === "/" &&
+        u.searchParams.getAll("hints").length === 1 && u.searchParams.get("hints") === "search" && queries.length === 1 &&
+        Boolean(queries[0].trim()) && queries[0].length <= 1000 && !/[\u0000-\u001f\u007f]/.test(queries[0]);
+    } catch { return false; }
+  }
+
+  function referenceAssetURL(value) {
+    try {
+      const u = new URL(value);
+      return u.hostname === "images.openai.com" && /^\/static-rsc-\d+\//.test(u.pathname) ||
+        ["google.com", "www.google.com"].includes(u.hostname) && u.pathname === "/s2/favicons";
+    } catch { return false; }
+  }
+
+  function verificationLink(url) {
+    return url.protocol === "https:" && !url.username && !url.password && !referenceAssetURL(url.href) &&
+      (!HOST_PAGES.has(url.hostname) || hostSearchURL(url.href));
+  }
+
   function destinationKey(value) {
     try {
       const resolved = typeof FactTTLAmazonURL !== "undefined" ? FactTTLAmazonURL.resolveAmazonProductURL(value) : null;
@@ -60,7 +84,7 @@
     } catch { return null; }
   }
 
-  function serializeMessage(root) {
+  function serializeMessage(root, {includeHostSearch = true} = {}) {
     const links = new Set();
     function walk(node) {
       if (node.nodeType === 3) return node.textContent || "";
@@ -70,7 +94,7 @@
         const href = node.getAttribute("href");
         let url;
         try { url = new URL(href, PAGE_ORIGIN); } catch { return caption; }
-        if (url.protocol === "https:" && !HOST_PAGES.has(url.hostname) && !url.username && !url.password) {
+        if (verificationLink(url) && (includeHostSearch || !hostSearchURL(url.href))) {
           links.add(url.href);
           return `[${caption || url.href}](${url.href})`;
         }
@@ -105,7 +129,7 @@
       if (node.closest(".factttl-ui")) return false;
       try {
         const u = new URL(node.href);
-        return u.protocol === "https:" && !HOST_PAGES.has(u.hostname) && !u.username && !u.password;
+        return verificationLink(u);
       } catch { return false; }
     });
     const seenDestinations = new Map();
@@ -135,7 +159,7 @@
 
   function sourceFor(node) { return node.tagName === "A" ? node.closest("tr") || node.closest("li") || node.closest("p, tr") || node.parentElement : node; }
 
-  const exported = {chatKey, hostKind, serializeMessage, normalizeChecks, destinationKey, itemTargets, sourceFor, publicFactCandidate, LABELS};
+  const exported = {chatKey, hostKind, serializeMessage, normalizeChecks, destinationKey, itemTargets, sourceFor, publicFactCandidate, hostSearchURL, referenceAssetURL, LABELS};
   if (typeof module !== "undefined" && module.exports) module.exports = exported;
   if (typeof document === "undefined" || (typeof chrome === "undefined" && typeof browser === "undefined")) return;
   const extensionAPI = typeof browser !== "undefined" ? browser : chrome;
@@ -273,6 +297,15 @@
       }
       if (signature === state.signature && now - state.finishedAt < 300000) continue;
       if (state.pending || now - state.changedAt < 1400 || isStreaming()) continue;
+      if (node.tagName === "A" && hostSearchURL(node.href)) {
+        // A host search shortcut has no selected merchant offer. This follows
+        // from its URL, even when the bridge is offline; never fetch a signed-in
+        // ChatGPT page or infer product stock from its HTTP response.
+        showResult(state, {ok: true, result: {status: "INCONCLUSIVE", checks: [], reference: {kind: "host_search", basis: "url_structure", product_selected: false}}});
+        state.signature = signature;
+        state.finishedAt = now;
+        continue;
+      }
       // Oversized answers are not silently truncated and marked as verified.
       if (payload.text.length > 20000 || payload.links.length > 20) {
         showResult(state, {ok: false, message: "Messaggio troppo lungo: non verificato"});
@@ -281,7 +314,10 @@
         continue;
       }
       state.pending = true;
-      queue.push({node, source: itemSource, state, signature, epoch, chatId: currentChat, payload: {...payload, id: crypto.randomUUID(), chatId: currentChat}});
+      // Preserve search shortcuts in the local assertion/correction view, but
+      // never ask the public-web bridge to fetch an authenticated host page.
+      const publicPayload = serializeMessage(itemSource, {includeHostSearch: false});
+      queue.push({node, source: itemSource, state, signature, epoch, chatId: currentChat, payload: {...publicPayload, id: crypto.randomUUID(), chatId: currentChat}});
     }
     // The answer the user just received must not wait behind an entire old chat.
     const priorities = new Map(messages.map((node, index) => [node, index]));

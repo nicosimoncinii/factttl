@@ -25,10 +25,10 @@ function harness({enabled = true, deferred = false, ignoreHost = false, normaliz
     get value() {return this._value;}
     set value(value) {this._value = normalizeWrite && value.startsWith("[FactTTL — correzione automatica]") ? value.slice(0, 36) : value;}
   }
-  const editor = new TextArea(), button = new Node("BUTTON"), control = new Node("DIV");
+  const editor = new TextArea(), button = new Node("BUTTON"), control = new Node("DIV"), users = [];
   const document = {
     createElement: tag => new Node(tag.toUpperCase()),
-    querySelectorAll: selector => selector.includes("prompt-textarea") ? [editor] : [button],
+    querySelectorAll: selector => selector.includes("prompt-textarea") ? [editor] : selector.includes("data-message-author-role") ? users : selector.includes("stop-button") ? [] : [button],
     addEventListener: (type, callback) => documentListeners.set(type, callback),
   };
   function event(type, options = {}) {
@@ -42,7 +42,10 @@ function harness({enabled = true, deferred = false, ignoreHost = false, normaliz
   button.click = () => {
     event("click", {isTrusted: false});
     hostClicks.push(editor.value);
-    if (!ignoreHost) editor.value = "";
+    if (!ignoreHost) {
+      const user = new Node("DIV"); user.textContent = editor.value; users.push(user);
+      editor.value = "";
+    }
   };
   const findings = {findings: [{url: "https://www.amazon.it/dp/B0DKF9NCN1",
     property: "product_price", outcome: "CONTRADICTED", expected_value: "1 EUR",
@@ -166,7 +169,11 @@ for (const change of ["off", "route", "user-edit", "guard"]) test(`automatic edi
 test("turning FactTTL off removes an unsent host-ignored automatic correction", async () => {
   const h = harness({ignoreHost: true}); h.editor.value = "";
   const pending = h.installed.sendCorrection("[FactTTL — correzione automatica]\nriscontro");
-  h.timers.at(-1)(); await pending; assert.match(h.editor.value, /riscontro/);
+  let settled = false; pending.then(() => {settled = true;});
+  for (let attempt = 0; attempt < 50 && !settled; attempt++) {
+    h.timers.splice(0).forEach(callback => callback()); await flush();
+  }
+  assert.equal((await pending).reason, "not_sent"); assert.match(h.editor.value, /riscontro/);
   h.state.enabled = false; h.installed.refresh(); assert.equal(h.editor.value, "");
 });
 

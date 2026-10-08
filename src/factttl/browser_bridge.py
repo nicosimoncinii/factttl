@@ -286,6 +286,12 @@ def create_bridge_server(
                     {
                         "status": "ready",
                         "service": "FactTTL",
+                        "connection_scope": "browser_extension_local_service",
+                        "protocol_version": 1,
+                        "capabilities": [
+                            "message_verification",
+                            "local_correction_memory",
+                        ],
                         "news_engine": news_engine_health(
                             os.environ.get("FACTTTL_NEWS_MODEL")
                         ),

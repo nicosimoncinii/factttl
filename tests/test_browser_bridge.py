@@ -178,6 +178,17 @@ def test_health_is_authenticated(server: ThreadingHTTPServer) -> None:
     assert request(server, headers={"Authorization": "Bearer invalid"})[0] == 401
 
 
+def test_health_identifies_the_local_browser_connection(
+    server: ThreadingHTTPServer,
+) -> None:
+    status, _, result = request(server)
+    assert status == 200
+    assert result["connection_scope"] == "browser_extension_local_service"
+    assert result["protocol_version"] == 1
+    assert "message_verification" in result["capabilities"]
+    assert "mcp_connected" not in result
+
+
 def test_context_reads_local_data_only(server: ThreadingHTTPServer) -> None:
     body = json.dumps({"query": "ESP32", "urls": [], "limit": 8}).encode()
     status, _, result = request(

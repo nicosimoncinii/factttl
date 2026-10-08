@@ -1,12 +1,54 @@
 from datetime import UTC, datetime, timedelta
+from urllib.parse import quote
 
 import pytest
 
 from factttl.browser_product import (
     offer_identity,
+    resolve_product_url,
     validate_observations,
     verify_browser_product,
 )
+
+
+def test_same_marketplace_ad_wrapper_keeps_offer_scope() -> None:
+    destination = "/gp/aw/d/B0DKF9NCN1?seller=one&tag=referral"
+    wrapper = "https://www.amazon.it/sspa/click?url=" + quote(destination, safe="")
+    assert resolve_product_url(wrapper) == "https://www.amazon.it" + destination
+    assert offer_identity(wrapper) == offer_identity(
+        "https://www.amazon.it" + destination
+    )
+    assert offer_identity(wrapper) != offer_identity(
+        "https://www.amazon.it/dp/B0DKF9NCN1?seller=two"
+    )
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "https://127.0.0.1/dp/B0DKF9NCN1",
+        "https://amazon.it.attacker.example/dp/B0DKF9NCN1",
+        "https://user:secret@amazon.it/dp/B0DKF9NCN1",
+        "http://amazon.it/dp/B0DKF9NCN1",
+        "https://amazon.de/dp/B0DKF9NCN1",
+        "https://amazon.it:444/dp/B0DKF9NCN1",
+        "/s?k=esp32",
+        "//attacker.example/dp/B0DKF9NCN1",
+    ],
+)
+def test_wrapper_cannot_escape_marketplace_or_select_search(target: str) -> None:
+    wrapper = "https://www.amazon.it/sspa/click?url=" + quote(target, safe="")
+    assert resolve_product_url(wrapper) is None
+    assert offer_identity(wrapper) is None
+
+
+def test_ambiguous_wrapper_destination_is_unresolved() -> None:
+    assert (
+        resolve_product_url(
+            "https://www.amazon.it/sspa/click?url=/dp/B0DKF9NCN1&url=/dp/B000000000"
+        )
+        is None
+    )
 
 
 def observation(**updates: object) -> dict[str, object]:

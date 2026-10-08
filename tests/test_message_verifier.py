@@ -51,6 +51,48 @@ def test_plain_prose_is_not_marked_true(tmp_path: Path, checks: object) -> None:
     assert result["unchecked_claims"]
 
 
+@pytest.mark.parametrize(
+    "price",
+    [
+        "Prezzo indicativo 8 EUR",
+        "Prezzo ~8 EUR",
+        "Prezzo 5–8 EUR",
+        "Prezzo circa 8 EUR",
+    ],
+)
+def test_product_estimates_observe_current_price_without_exact_assertion(
+    tmp_path: Path,
+    checks: list[tuple[str, str, str | None]],
+    price: str,
+) -> None:
+    url = "https://www.amazon.it/gp/aw/d/B0DKF9NCN1"
+    run(tmp_path, f"ESP32 {price} {url}")
+    assert (url, "product_price", None) in checks
+    assert not any(
+        kind == "product_price" and expected is not None for _, kind, expected in checks
+    )
+
+
+def test_amazon_search_is_not_an_offer(
+    tmp_path: Path,
+    checks: list[tuple[str, str, str | None]],
+) -> None:
+    url = "https://www.amazon.it/s?k=esp32"
+    result = run(tmp_path, f"ESP32 disponibile a 8 EUR {url}")
+    assert checks == [(url, "link_available", None)]
+    assert result["unchecked_claims"]
+
+
+def test_wrapped_amazon_recommendation_observes_stock_and_price(
+    tmp_path: Path,
+    checks: list[tuple[str, str, str | None]],
+) -> None:
+    url = "https://www.amazon.it/sspa/click?url=%2Fdp%2FB0DKF9NCN1"
+    run(tmp_path, f"ESP32 raccomandato {url}")
+    assert (url, "product_availability", "true") in checks
+    assert (url, "product_price", None) in checks
+
+
 def test_http200_does_not_verify_message(tmp_path: Path, checks: object) -> None:
     result = run(tmp_path, f"Questo ESP32 è perfetto per ogni progetto. {URL}")
     assert result["status"] == "PARTIAL"

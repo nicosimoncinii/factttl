@@ -20,6 +20,13 @@ from factttl.verification import VerificationResult, parse_timestamp, validate_u
 
 def _normalized_url(url: str) -> str:
     parsed = urlsplit(validate_url(url))
+    offer = offer_identity(url)
+    if offer is not None:
+        marketplace, offer_asin, parameters = offer
+        query = urlencode(parameters)
+        return f"https://www.{marketplace}/dp/{offer_asin}" + (
+            f"?{query}" if query else ""
+        )
     host = (parsed.hostname or "").lower()
     if host in {"amazon.it", "www.amazon.it"} and (
         (parsed.scheme.lower() == "https" and parsed.port in {None, 443})
@@ -104,7 +111,7 @@ class VerificationStore:
     def _migrate_canonical_claims(self, db: sqlite3.Connection) -> None:
         """Rekey earlier URL identities atomically, preserving all observations."""
         db.execute("BEGIN IMMEDIATE")
-        if db.execute("PRAGMA user_version").fetchone()[0] >= 2:
+        if db.execute("PRAGMA user_version").fetchone()[0] >= 3:
             return
         rows = db.execute("""SELECT c.*, o.observed_at, o.result_json, o.expires_at
             FROM claims c JOIN observations o ON o.id=c.latest_id""").fetchall()
@@ -156,7 +163,7 @@ class VerificationStore:
                     last_contradicted.isoformat() if last_contradicted else None,
                 ),
             )
-        db.execute("PRAGMA user_version=2")
+        db.execute("PRAGMA user_version=3")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.db_path, timeout=15)
@@ -593,7 +600,7 @@ def _context_value(kind: str, value: object) -> str | None:
     ):
         return value
     if kind == "product_discount" and re.fullmatch(
-        r"[0-9]{1,3}(?:[.,][0-9]{1,2})?%?|true|false", value
+        r"[0-9]{1,3}(?:[.,][0-9]{1,2})?%?|true|false|discounted|not_discounted", value
     ):
         return value
     return None

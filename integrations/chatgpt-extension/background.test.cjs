@@ -65,6 +65,7 @@ function harness(fetcher, settings = {}) {
     setTimeout: (fn, delay) => setTimeout(fn, delay < 5000 ? Math.min(delay, 5) : delay),
     fetch: async (url, init) => { requests.push({url, init}); return fetcher(url, init); },
   });
+  vm.runInContext(readFileSync(path.join(__dirname, "amazon-url.js"), "utf8"), context);
   vm.runInContext(readFileSync(path.join(__dirname, "background.js"), "utf8"), context);
   return {
     storage, requests, broadcasts, chatSender, optionsSender, origin,
@@ -77,6 +78,51 @@ async function ready(h) {
   await h.send({type: "SET_TOKEN", payload: {token: TOKEN}}, h.optionsSender);
   await h.send({type: "SET_CHAT_STATE", payload: {chatId: payload.chatId, enabled: true}});
 }
+
+test("correction reservation persists, deduplicates tabs and caps each user request", async () => {
+  const h = harness(); await ready(h);
+  const reserve = key => h.send({type: "RESERVE_CORRECTION", payload: {chatId: payload.chatId, key}});
+  const [first, second] = await Promise.all([reserve("a".repeat(64)), reserve("a".repeat(64))]);
+  assert.equal(first.reserved, true); assert.equal(second.reserved, false);
+  assert.equal((await reserve("b".repeat(64))).reserved, true);
+  assert.equal((await reserve("c".repeat(64))).budget_exhausted, true);
+  await h.send({type: "RESET_CORRECTION_BUDGET", payload: {chatId: payload.chatId}});
+  assert.equal((await reserve("c".repeat(64))).reserved, true);
+  const restarted = harness(null, {storage: h.storage});
+  assert.equal((await restarted.send({type: "RESERVE_CORRECTION", payload: {chatId: payload.chatId, key: "c".repeat(64)}})).reserved, false);
+});
+test("a canceled draft reservation can be released only by its owner token", async () => {
+  const h = harness(); await ready(h);
+  const item = {chatId: payload.chatId, key: "d".repeat(64)};
+  const first = await h.send({type: "RESERVE_CORRECTION", payload: item});
+  await h.send({type: "RELEASE_CORRECTION", payload: {...item, reservation: "wrong"}});
+  assert.equal((await h.send({type: "RESERVE_CORRECTION", payload: item})).reserved, false);
+  await h.send({type: "RELEASE_CORRECTION", payload: {...item, reservation: first.reservation}});
+  assert.equal((await h.send({type: "RESERVE_CORRECTION", payload: item})).reserved, true);
+});
+test("disabled or foreign pages cannot reserve correction sends", async () => {
+  const h = harness(); const item = {chatId: payload.chatId, key: "e".repeat(64)};
+  assert.equal((await h.send({type: "RESERVE_CORRECTION", payload: item})).ok, false);
+  await ready(h);
+  assert.equal((await h.send({type: "RESERVE_CORRECTION", payload: item}, {...chat, url: "https://evil.example"})).ok, false);
+  assert.equal((await h.send({type: "RESERVE_CORRECTION", payload: {...item, key: "unsafe"}})).ok, false);
+});
+test("manual correction preference survives a background restart and blocks reservations", async () => {
+  const h = harness(); await ready(h);
+  await h.send({type: "SET_CORRECTION_MODE", payload: {chatId: payload.chatId, enabled: false}});
+  const restarted = harness(null, {storage: h.storage});
+  assert.equal((await restarted.send({type: "GET_CHAT_STATE", payload: {chatId: payload.chatId}})).autoCorrection, false);
+  assert.equal((await restarted.send({type: "RESERVE_CORRECTION", payload: {chatId: payload.chatId, key: "f".repeat(64)}})).ok, false);
+});
+test("Amazon advertising wrapper opens the resolved same-market product offer", async () => {
+  const direct = "https://www.amazon.it/gp/aw/d/B0DKF9NCN1?seller=SellerA";
+  const offer = {url: direct, asin: "B0DKF9NCN1", status: "OBSERVED", source: "browser_rendered_amazon", scope: "browser_current_offer", observed_at: new Date().toISOString(), title: "ESP32", availability: "available", price: "10.99", currency: "EUR", list_price: null};
+  const h = harness(null, {merchant: offer}); await ready(h);
+  const wrapper = "https://www.amazon.it/sspa/click?url=" + encodeURIComponent(direct);
+  assert.equal((await h.send({type: "VERIFY_MESSAGE", payload: {...payload, links: [wrapper]}})).ok, true);
+  assert.equal(h.broadcasts.find(value => value.created).created.url, direct);
+  assert.equal(JSON.parse(h.requests.find(value => value.url.endsWith("/jobs")).init.body).browser_observations[0].price, "10.99");
+});
 
 test("browser offer is read in an inactive owned tab and accompanies only the requested product", async () => {
   const offer = {url: "https://www.amazon.it/dp/B0DKF9NCN1", asin: "B0DKF9NCN1", status: "OBSERVED", source: "browser_rendered_amazon", scope: "browser_current_offer", observed_at: new Date().toISOString(), title: "ESP32", availability: "available", price: "10.99", currency: "EUR", list_price: null};
@@ -161,7 +207,7 @@ test("Firefox uses promise namespace, string access level, and exact moz-extensi
   assert.equal(h.access(), "TRUSTED_CONTEXTS");
   assert.equal(h.requests[0].init.headers["X-FactTTL-Origin"], h.origin);
   assert.equal(manifest.browser_specific_settings.gecko.id, "factttl-local@factttl.dev");
-  assert.deepEqual(manifest.background.scripts, ["background.js"]);
+  assert.deepEqual(manifest.background.scripts, ["amazon-url.js", "background.js"]);
 });
 
 test("Firefox without access-level API persists token privately across background restarts", async () => {

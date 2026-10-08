@@ -58,6 +58,17 @@ function loadItemUI() {
 
 function textIn(element) { return element.textContent; }
 
+test("an anchor directly under a table row receives a valid cell for its badge", () => {
+  const {api, document} = loadItemUI();
+  const row = new FakeElement("tr"), anchor = new FakeElement("a");
+  anchor.href = "https://shop.example/product"; anchor.textContent = "Acquista";
+  row.append(anchor); document.body.append(row);
+  const state = api.create(anchor, () => {});
+  assert.equal(state.box.parentElement.tagName, "TD");
+  assert.equal(state.box.parentElement.parentElement, row);
+  assert.ok(row.children.every(node => node !== state.box));
+});
+
 test("external discovery details disclose Bing queries and exclude snippets as proof", () => {
   const {api, document} = loadItemUI();
   const paragraph = new FakeElement("p"); paragraph.textContent = "Una notizia da controllare";

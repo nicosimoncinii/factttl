@@ -3,6 +3,9 @@
   "use strict";
   const kinds = {product_availability: "Disponibilità", product_price: "Prezzo", product_discount: "Sconto", link_available: "Apertura del link", news: "Notizia"};
   const sameURL = (a, b) => { try { const x = new URL(a); const y = new URL(b); x.hash = y.hash = ""; return x.href === y.href; } catch { return false; } };
+  function amazonSearch(value) {
+    try { const u = new URL(value); return u.protocol === "https:" && ["amazon.it", "amazon.com", "amazon.co.uk", "amazon.de", "amazon.fr", "amazon.es"].includes(u.hostname.replace(/^www\./, "")) && /^\/(?:s|gp\/search)\/?$/.test(u.pathname); } catch { return false; }
+  }
   function summarize(result, url) {
     const all = (result.checks || []).map(c => c.result || c);
     const checks = url ? all.filter(c => sameURL(c.url, url)) : all;
@@ -46,6 +49,14 @@
     }
     if (status === "INCONCLUSIVE" && checks.some(c => c.outcome === "ERROR")) { status = "ERROR"; label = "Controllo incompleto"; }
     if (result.status === "ERROR") { status = "ERROR"; label = "Controllo non riuscito"; }
+    if (amazonSearch(url) && ["ACCESSIBLE", "INCONCLUSIVE"].includes(status)) { status = "SEARCH"; label = "Ricerca Amazon: nessuna offerta scelta"; }
+    if (!["CONTRADICTED", "ERROR"].includes(status)) {
+      const stock = checks.find(c => c.kind === "product_availability" && c.outcome === "SUPPORTED" && c.observed_value === "available");
+      const price = checks.find(c => c.kind === "product_price" && c.outcome === "SUPPORTED" && /^\d+(?:[.,]\d{1,2})? (EUR|USD|GBP)$/.test(c.observed_value || ""));
+      if (stock && price) label = `Disponibile · ${formatPrice(price.observed_value, result.context?.language || result.preferences?.language)}`;
+      else if (stock) label = "Disponibile · prezzo da verificare";
+      else if (price) label = `${formatPrice(price.observed_value, result.context?.language || result.preferences?.language)} · disponibilità da verificare`;
+    }
     return {status, label, checks};
   }
   const exported = {summarize, sameURL};
@@ -108,7 +119,9 @@
     text(dialog, "span", product ? "Controllo del prodotto" : summary.checks.some(c => c.kind === "news") ? "Controllo della notizia" : "Controllo del riferimento", "factttl-sheet-category");
     const title = text(dialog, "h2", sourceTitle || state.title || "Contenuto da verificare"); title.id = "factttl-sheet-title";
     const conclusion = text(dialog, "p", summary.label, "factttl-conclusion"); conclusion.dataset.status = summary.status;
-    const intro = summary.status === "CONTRADICTED"
+    const intro = summary.status === "SEARCH"
+      ? "Questo link apre una ricerca, non un’offerta precisa. Prezzo e disponibilità dei prodotti elencati non sono stati verificati."
+      : summary.status === "CONTRADICTED"
       ? "Il dato indicato non coincide con la fonte consultata."
       : summary.status === "ACCESSIBLE"
         ? "Il link si apre; questo non conferma disponibilità o veridicità."
@@ -213,7 +226,12 @@
   function create(node, retry) {
     const box = document.createElement(node.tagName === "A" ? "span" : "div"); box.className = "factttl-ui factttl-result factttl-item";
     const badge = text(box, "button", "○ Controllo…", "factttl-badge"); badge.type = "button"; badge.dataset.status = "PENDING";
-    badge.setAttribute("aria-haspopup", "dialog"); node.after(box);
+    badge.setAttribute("aria-haspopup", "dialog");
+    if (node.parentElement?.tagName === "TR") {
+      // A table row accepts cells, never an injected span as a direct child.
+      const cell = document.createElement("td"); cell.className = "factttl-ui";
+      cell.append(box); node.parentElement.append(cell);
+    } else node.after(box);
     const state = {box, badge, url: node.tagName === "A" ? node.href : null, title: (node.textContent || "").trim().slice(0, 180), retry};
     badge.addEventListener("click", () => open(state)); return state;
   }
@@ -230,6 +248,7 @@
     state.url = node.tagName === "A" ? node.href : null;
     state.title = (node.textContent || "").trim().slice(0, 180);
     state.result = undefined;
+    state.response = undefined;
     close();
     state.badge.textContent = "Attendo…";
     state.badge.dataset.status = "PENDING";

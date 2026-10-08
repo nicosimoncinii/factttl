@@ -1,5 +1,7 @@
 /* The bridge token is accessible only to trusted extension contexts. */
 "use strict";
+if (typeof importScripts === "function" && typeof FactTTLAmazonURL === "undefined") importScripts("amazon-url.js");
+const amazonURL = typeof FactTTLAmazonURL !== "undefined" ? FactTTLAmazonURL : null;
 
 const extensionAPI = typeof browser !== "undefined" ? browser : chrome;
 const isFirefox = extensionAPI.runtime.getURL("").startsWith("moz-extension://");
@@ -13,7 +15,8 @@ const AMAZON_HOSTS = new Set(["amazon.it", "amazon.com", "amazon.co.uk", "amazon
 const merchantCache = new Map();
 function merchantKey(value) {
   try {
-    const url = new URL(value);
+    const resolved = amazonURL?.resolveAmazonProductURL(value);
+    const url = new URL(resolved || value);
     const host = url.hostname.replace(/^www\./, "");
     const asin = url.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/.]|$)/i)?.[1]?.toUpperCase();
     if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443") || !AMAZON_HOSTS.has(host) || !asin) return null;
@@ -32,7 +35,7 @@ async function observeMerchant(url, signal) {
   let tab;
   try {
     if (signal.aborted) throw aborted();
-    tab = await extensionAPI.tabs.create({url, active: false});
+    tab = await extensionAPI.tabs.create({url: amazonURL?.resolveAmazonProductURL(url) || url, active: false});
     const deadline = Date.now() + 22000;
     while (Date.now() < deadline) {
       if (signal.aborted) throw aborted();
@@ -74,6 +77,9 @@ const active = new Map();
 const epochs = new Map();
 const chats = new Map();
 const knownTabs = new Map();
+const correctionLedger = new Map();
+const correctionBudget = new Map();
+const correctionModes = new Map();
 let persistQueue = Promise.resolve();
 
 const initialized = (async () => {
@@ -93,6 +99,16 @@ const initialized = (async () => {
     }
   }
   const storedPreferences = await extensionAPI.storage.local.get("factttlPreferences");
+  const corrections = await extensionAPI.storage.local.get("factttlCorrections");
+  for (const [key, value] of Object.entries(corrections.factttlCorrections?.modes || {}).slice(-1000)) {
+    if (validId(key) && typeof value === "boolean") correctionModes.set(key, value);
+  }
+  for (const [key, value] of Object.entries(corrections.factttlCorrections?.ledger || {}).slice(-200)) {
+    if (typeof value === "string") correctionLedger.set(key, value);
+  }
+  for (const [key, value] of Object.entries(corrections.factttlCorrections?.budget || {}).slice(-1000)) {
+    if (validId(key) && Number.isInteger(value) && value >= 0 && value <= 2) correctionBudget.set(key, value);
+  }
   try { preferences = validatePreferences(storedPreferences.factttlPreferences); }
   catch { /* Browser locale is an editable hint, never geolocation evidence. */ }
 })();
@@ -364,12 +380,49 @@ async function handle(message, sender) {
         }
       }
     }
-    return {ok: true, chatId: payload.chatId, enabled: chats.get(payload.chatId) === true};
+    return {ok: true, chatId: payload.chatId, enabled: chats.get(payload.chatId) === true, autoCorrection: correctionModes.get(payload.chatId) !== false};
   }
   if (message.type === "CANCEL_CHAT") {
     if (!isChat || !validId(payload.chatId)) return fail("INVALID_PAYLOAD", "Chat non valida.");
     cancelChat(payload.chatId, sender.tab.id);
     return {ok: true, chatId: payload.chatId};
+  }
+
+  if (["RESERVE_CORRECTION", "RELEASE_CORRECTION", "RESET_CORRECTION_BUDGET", "SET_CORRECTION_MODE"].includes(message.type)) {
+    if (!isChat || !validId(payload.chatId) || chats.get(payload.chatId) !== true) return fail("DISABLED", "Correzione disattivata.");
+    if (message.type === "SET_CORRECTION_MODE" && typeof payload.enabled !== "boolean") return fail("INVALID_PAYLOAD", "Stato non valido.");
+    if (!["RESET_CORRECTION_BUDGET", "SET_CORRECTION_MODE"].includes(message.type) && (typeof payload.key !== "string" || !/^[a-f0-9]{64}$/.test(payload.key))) return fail("INVALID_PAYLOAD", "Correzione non valida.");
+    let result;
+    // Serialize reservations across tabs: the same answer can create one send.
+    persistQueue = persistQueue.catch(() => {}).then(async () => {
+      if (chats.get(payload.chatId) !== true) {result = fail("DISABLED", "Correzione disattivata."); return;}
+      const key = `${payload.chatId}:${payload.key}`;
+      if (message.type === "SET_CORRECTION_MODE") {
+        correctionModes.set(payload.chatId, payload.enabled);
+        if (correctionModes.size > 1000) correctionModes.delete(correctionModes.keys().next().value);
+        result = {ok: true, autoCorrection: payload.enabled};
+      }
+      else if (message.type === "RESET_CORRECTION_BUDGET") correctionBudget.set(payload.chatId, 0);
+      else if (message.type === "RELEASE_CORRECTION") {
+        if (correctionLedger.get(key) === payload.reservation) {correctionLedger.delete(key); correctionBudget.set(payload.chatId, Math.max(0, (correctionBudget.get(payload.chatId) || 0) - 1));}
+      } else if (correctionModes.get(payload.chatId) === false) {
+        result = fail("DISABLED", "Correzione automatica disattivata."); return;
+      } else if (correctionLedger.has(key) || (correctionBudget.get(payload.chatId) || 0) >= 2) {
+        result = {ok: true, reserved: false, budget_exhausted: (correctionBudget.get(payload.chatId) || 0) >= 2}; return;
+      } else {
+        const reservation = `${sender.tab.id}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+        correctionLedger.set(key, reservation); correctionBudget.set(payload.chatId, (correctionBudget.get(payload.chatId) || 0) + 1);
+        if (correctionLedger.size > 200) correctionLedger.delete(correctionLedger.keys().next().value);
+        if (correctionBudget.size > 1000) correctionBudget.delete(correctionBudget.keys().next().value);
+        result = {ok: true, reserved: true, reservation};
+      }
+      await extensionAPI.storage.local.set({factttlCorrections: {ledger: Object.fromEntries(correctionLedger), budget: Object.fromEntries(correctionBudget), modes: Object.fromEntries(correctionModes)}});
+      if (message.type === "SET_CORRECTION_MODE") for (const [tabId, chatId] of knownTabs) {
+        if (chatId === payload.chatId && tabId !== sender.tab.id) extensionAPI.tabs.sendMessage(tabId, {type: "CORRECTION_MODE_CHANGED", chatId, enabled: payload.enabled}).catch(() => knownTabs.delete(tabId));
+      }
+      result ||= {ok: true};
+    });
+    await persistQueue; return result;
   }
 
   if (message.type === "GET_HEALTH" && isChat &&

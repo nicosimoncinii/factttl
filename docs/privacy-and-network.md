@@ -77,8 +77,20 @@ looks up relevant stored checks locally. The extension adds a visible, quoted
 FactTTL block to that same outgoing message. The selected chat provider thus
 receives the relevant assertion, observed value, source URL, status and
 expiry along with the user's message. The lookup itself contacts only the
-local bridge. No messages are sent on a timer or without the user's send
-action. Turning memory or FactTTL off removes an unsent block owned by
+local bridge. This memory-only path resumes the user's send action.
+
+The separate **Correzione automatica** switch authorizes visible correction
+follow-ups after a completed response. The selected provider receives original
+URLs/assertions, typed observed stock/price/discount values and, for grounded
+news contradictions, up to two short quoted source passages per finding.
+The extension asks the model to acknowledge the incorrect indication and
+provide replacements respecting the original request. The choice is saved per
+chat. A local hash ledger avoids duplicate sends; at most two follow-ups are
+attempted for each user request. No full chat transcript, source HTML, cookies,
+credentials or API keys are added to that follow-up. The original answer is
+preserved and a FactTTL correction card is appended below it.
+
+Turning memory or FactTTL off removes an unsent block owned by
 FactTTL; if that block was edited and cannot be removed safely, sending is
 blocked with an explanation. The extension does not alter the provider's
 model weights or permanent memory. See [prompt memory](prompt-memory.md).

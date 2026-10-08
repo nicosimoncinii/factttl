@@ -58,6 +58,66 @@ function loadItemUI() {
 
 function textIn(element) { return element.textContent; }
 
+test("external discovery details disclose Bing queries and exclude snippets as proof", () => {
+  const {api, document} = loadItemUI();
+  const paragraph = new FakeElement("p"); paragraph.textContent = "Una notizia da controllare";
+  document.body.append(paragraph);
+  const state = api.create(paragraph, () => {});
+  api.update(state, {ok: true, result: {
+    discovery: {enabled: true, provider: "bing_rss", queries_sent: 1},
+    checks: [{result: {kind: "news", url: "https://news.example/story", outcome: "INCONCLUSIVE", evidence: [{provider: "public_source_discovery", status: "FOUND", fetched_source_count: 2, independence_established: false}]}}],
+  }});
+  state.badge.listeners.click();
+  const rendered = textIn(document.body.children.at(-1));
+  assert.match(rendered, /Ricerca esterna Bing: inviate 1 query/);
+  assert.match(rendered, /riassunti non sono prove/);
+  assert.match(rendered, /Lette 2 fonti/);
+  assert.match(rendered, /indipendenza non è stata accertata/);
+  assert.equal(state.badge.dataset.status, "INCONCLUSIVE");
+});
+
+test("an unlinked paragraph can display evidence from discovered publisher URLs", () => {
+  const {api, document} = loadItemUI();
+  const paragraph = new FakeElement("p"); paragraph.textContent = "La notizia annuncia un evento pubblico da verificare.";
+  document.body.append(paragraph);
+  const state = api.create(paragraph, () => {});
+  api.update(state, {ok: true, result: {checks: [{result: {
+    url: "https://publisher.example/discovered", kind: "news", outcome: "SUPPORTED",
+    claim_text: paragraph.textContent,
+    evidence: [{provider: "ai_assessed_live_source", scope: "current_source_consistency", assessment: "SUPPORTED", citations: [{quote: "Una citazione presente nella fonte scoperta."}]}],
+  }}]}});
+  assert.equal(state.url, null);
+  assert.equal(state.badge.dataset.status, "SUPPORTED");
+  state.badge.listeners.click();
+  const rendered = textIn(document.body.children.at(-1));
+  assert.match(rendered, /Coerente con la fonte/);
+  assert.match(rendered, /Una citazione presente nella fonte scoperta/);
+});
+
+test("long evidence has a concise preview and an accessible complete disclosure", () => {
+  const {api, document} = loadItemUI();
+  const paragraph = new FakeElement("p"); paragraph.textContent = "Notizia da confrontare";
+  document.body.append(paragraph);
+  const state = api.create(paragraph, () => {});
+  const quote = "Prova completa della fonte. ".repeat(30);
+  api.update(state, {ok: true, result: {checks: [{result: {
+    url: "https://news.example/story", kind: "news", outcome: "INCONCLUSIVE",
+    evidence: [{source_excerpt: quote}, {provider: "ai_assessed_live_source", configured: true, citations: [{quote}]}],
+    rationale: "Motivazione dettagliata. ".repeat(30),
+  }}]}});
+  state.badge.listeners.click();
+  const dialog = document.body.children.at(-1);
+  function descendants(node) { return node.children.flatMap(child => [child, ...descendants(child)]); }
+  const all = descendants(dialog);
+  const disclosures = all.filter(node => node.tagName === "DETAILS");
+  assert.equal(disclosures.length, 3);
+  assert.ok(disclosures.every(node => node.children[0].tagName === "SUMMARY" && node.children[0].textContent === "Leggi prove complete"));
+  const visibleQuotes = all.filter(node => node.tagName === "BLOCKQUOTE" && node.parentElement.tagName !== "DETAILS");
+  assert.ok(visibleQuotes[0].textContent.length <= 241);
+  assert.ok(visibleQuotes[1].textContent.length <= 351);
+  assert.equal(disclosures[0].children[1].textContent, quote);
+});
+
 test("editing a reused link clears old evidence and updates its destination", () => {
   const {api, document} = loadItemUI();
   const anchor = new FakeElement("a");

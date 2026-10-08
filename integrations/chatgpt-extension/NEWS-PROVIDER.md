@@ -28,6 +28,34 @@ successivo, lo script di setup scarica **esplicitamente** runtime e modello:
 .\scripts\Start-FactTTL-Browser.ps1 -NewsModel qwen3:4b
 ```
 
+Il profilo predefinito `balanced` richiede 8.192 token di contesto. Per usare
+esplicitamente la CPU aggiungi `-InferenceProfile cpu`; non è obbligatoria una
+GPU. Hardware e misure reali sono descritti in
+[limiti del motore locale](../../docs/local-engine-hardware.md).
+
+## Ricerca facoltativa di fonti
+
+La ricerca è disattivata per impostazione predefinita. Per attivarla:
+
+```powershell
+.\scripts\Start-FactTTL-Browser.ps1 -NewsModel qwen3:4b -NewsDiscovery bing
+```
+
+Il bridge invia a Bing RSS una query limitata ricavata dall'affermazione e usa
+paese e lingua come contesto. Non invia l'intera conversazione come query, ma
+il testo ricavato può comunque contenere informazioni personali: il filtro
+non garantisce l'eliminazione di dati privati. Leggi
+[privacy e rete](../../docs/privacy-and-network.md) prima di attivarlo.
+
+I risultati indicano URL candidati. Il controllo legge i corpi pubblici delle
+fonti tramite il fetcher protetto e analizza localmente i testi: titolo e snippet
+RSS non sono prove. Più domini non garantiscono fonti realmente indipendenti.
+Fonti mancanti, ambigue o discordanti devono restare inconcludenti.
+Usa `-NewsDiscovery disabled` per disattivare la ricerca. La scelta viene salvata
+localmente; un bridge già attivo va riavviato per applicare il cambiamento.
+`-DisableNews` disattiva sia l'analisi locale sia la ricerca esterna, anche se
+in precedenza era stato salvato Bing come provider.
+
 Il runtime standalone ufficiale Ollama v0.40.0 e Qwen3:4b sono conservati in
 `.factttl/runtime`, esclusa da Git. Il setup verifica lo SHA256 pubblicato per
 l'archivio, conserva i modelli nel progetto e avvia un processo nascosto con
@@ -96,9 +124,11 @@ Limiti:
   costituisce una seconda verifica semantica indipendente.
 - Risposta HTTP massima 1 MiB e scadenza complessiva di 60 secondi, compreso il
   controllo preliminare. Nessun redirect o proxy.
-- Contesto richiesto: 32.768 token, massimo 1.600 token di output. Budget di input
-  conservativo di 26.000 byte UTF-8; input più grandi falliscono senza troncamento
-  automatico del testo. Memoria e latenza dipendono dal modello e dall'hardware.
+- Profili limitati: `cpu` e `balanced` richiedono 8.192 token; `extended` richiede
+  32.768 token solo se scelto esplicitamente. Il budget UTF-8 include istruzioni
+  e schema: un input troppo grande produce astensione. Gli estratti limitati
+  conservano l'indicazione che il corpo completo non è stato valutato. Memoria
+  e latenza dipendono dal modello e dall'hardware.
 
 Paesi accettati: IT, US, GB, DE, FR, ES. Lingue: it, en, de, fr, es.
 

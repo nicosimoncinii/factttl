@@ -45,6 +45,14 @@ fetched source text, using validated quotations. Its result describes consistenc
 with that source, not independently established truth. Configure an installed
 model with `--news-model`; see the [news provider](integrations/chatgpt-extension/NEWS-PROVIDER.md).
 Arbitrary prose without sources and ambiguous associations remain unverified.
+Experimental source discovery can be enabled explicitly with
+`scripts/Start-FactTTL-Browser.ps1 -NewsModel qwen3:4b -NewsDiscovery bing`.
+It sends a bounded search query derived from the assertion to Bing RSS, then
+reads public HTTPS source bodies and compares them locally. Search snippets are
+never treated as evidence. Discovery is disabled by default; read the
+[privacy and network behavior](docs/privacy-and-network.md) before enabling it.
+The local model supports a bounded CPU profile; see
+[hardware and measured limits](docs/local-engine-hardware.md).
 Green applies only to narrowly covered properties; an accessible URL never
 proves a whole answer. The extension does not give the model hidden context or
 disable a separately selected ChatGPT plugin. A correction can be copied to the

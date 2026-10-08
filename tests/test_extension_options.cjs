@@ -47,6 +47,22 @@ function load({engine = {configured: false, ready: false}, handler, extension = 
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
+test("enabled external discovery discloses outgoing Bing queries and evidence limits", async () => {
+  const fixture = load({engine: {configured: true, ready: true, discovery_provider: "bing", discovery_sends_query: true}});
+  await settle();
+  const description = fixture.elements.get("news-discovery-description").textContent;
+  assert.match(description, /inviate a Bing/);
+  assert.match(description, /RSS non sono prove/);
+  assert.match(description, /indipendenza.*non è garantita/);
+});
+
+test("disabled discovery explains that only provided sources are compared", async () => {
+  const fixture = load({engine: {configured: true, ready: true, discovery_provider: "disabled", discovery_sends_query: false}});
+  await settle();
+  assert.match(fixture.elements.get("news-discovery-description").textContent, /solo con i link forniti/);
+  assert.match(fixture.elements.get("news-discovery-description").textContent, /-NewsDiscovery bing/);
+});
+
 test("configured model alone never displays a ready-green status", async () => {
   const fixture = load({engine: {configured: true, model: "qwen3:4b"}});
   await settle();

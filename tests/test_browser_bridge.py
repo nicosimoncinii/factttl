@@ -339,6 +339,17 @@ def test_health_reports_configuration_without_model_network(
     assert engine["scope"] == "current_source_consistency"
 
 
+def test_health_discloses_external_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FACTTTL_NEWS_DISCOVERY", raising=False)
+    assert bridge.news_engine_health(None)["discovery_provider"] == "disabled"
+    monkeypatch.setenv("FACTTTL_NEWS_DISCOVERY", "bing")
+    assert bridge.news_engine_health(None)["discovery_sends_query"] is True
+    monkeypatch.setenv("FACTTTL_NEWS_DISCOVERY", "unexpected")
+    engine = bridge.news_engine_health(None)
+    assert engine["discovery_provider"] == "invalid"
+    assert engine["discovery_sends_query"] is False
+
+
 def test_local_model_health_is_cached_and_never_runs_inference(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

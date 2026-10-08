@@ -541,6 +541,240 @@ def test_long_article_is_explicitly_an_excerpt_not_full_article_confirmation(
     assert news["result"]["evidence"][1]["source_analysis_truncated"] is True
 
 
+@pytest.mark.parametrize("provided", [False, True])
+def test_opt_in_discovery_reads_real_candidate_pages_once(
+    tmp_path: Path,
+    checks: object,
+    monkeypatch: pytest.MonkeyPatch,
+    provided: bool,
+) -> None:
+    from factttl import source_discovery
+
+    monkeypatch.setenv("FACTTTL_NEWS_DISCOVERY", "bing")
+    candidate_urls = [
+        "https://one.example/article",
+        "https://www.one.example/duplicate",
+        "https://two.example/article",
+    ]
+    discovery_calls = []
+
+    def discover(claim: str, **kwargs: Any) -> dict[str, object]:
+        discovery_calls.append(claim)
+        return {
+            "status": "FOUND",
+            "urls": candidate_urls,
+            "candidate_count": 3,
+            "query_sent": True,
+        }
+
+    seen = []
+
+    def observe(
+        url: str, language: object, claim: str, country: str, cancellation: object
+    ) -> VerificationResult:
+        seen.append(url)
+        return VerificationResult(
+            url=url,
+            kind="news",
+            outcome="SUPPORTED",
+            claim_text=claim,
+            observed_at=datetime.now(UTC).isoformat(),
+            rationale="Scoped agreement",
+            evidence=[
+                {
+                    "provider": "ai_assessed_live_source",
+                    "scope": "current_source_consistency",
+                }
+            ],
+        )
+
+    monkeypatch.setattr(source_discovery, "discover_sources", discover)
+    monkeypatch.setattr(message, "_news_observation", observe)
+    text = "Notizia: NASA annuncia il lancio Artemis domani" + (
+        " " + URL if provided else ""
+    )
+    result = run(tmp_path, text)
+    assert len(discovery_calls) == 1
+    assert set(seen) == {
+        candidate_urls[0],
+        candidate_urls[2],
+        *([URL] if provided else []),
+    }
+    assert len(seen) == len(set(seen))
+    assert result["discovery"]["queries_sent"] == 1
+    news = [check for check in result["checks"] if check["result"]["kind"] == "news"]
+    assert all(check["result"]["outcome"] == "SUPPORTED" for check in news)
+    assert all(
+        any(
+            e["provider"] == "public_source_discovery"
+            for e in check["result"]["evidence"]
+        )
+        for check in news
+    )
+    assert all(
+        e["fetched_source_count"] == 0
+        for check in news
+        for e in check["result"]["evidence"]
+        if e["provider"] == "public_source_discovery"
+    )  # Selecting a candidate is not proof that its body was fetched.
+
+
+def test_discovery_without_sources_cannot_confirm_original_source(
+    tmp_path: Path,
+    checks: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from factttl import source_discovery
+
+    monkeypatch.setenv("FACTTTL_NEWS_DISCOVERY", "bing")
+    monkeypatch.setattr(
+        source_discovery,
+        "discover_sources",
+        lambda *a, **k: {
+            "status": "EMPTY",
+            "urls": [],
+            "candidate_count": 0,
+            "query_sent": True,
+        },
+    )
+    monkeypatch.setattr(
+        message,
+        "_news_observation",
+        lambda url, lang, claim, country, cancel: VerificationResult(
+            url=url,
+            kind="news",
+            outcome="SUPPORTED",
+            claim_text=claim,
+            observed_at=datetime.now(UTC).isoformat(),
+            rationale="One source says so",
+            evidence=[
+                {
+                    "provider": "ai_assessed_live_source",
+                    "scope": "current_source_consistency",
+                }
+            ],
+        ),
+    )
+    result = run(tmp_path, "Notizia: NASA annuncia il lancio Artemis domani " + URL)
+    news = next(
+        check for check in result["checks"] if check["result"]["kind"] == "news"
+    )
+    assert news["result"]["outcome"] == "INCONCLUSIVE"
+
+
+def test_no_discovery_when_disabled(
+    tmp_path: Path, checks: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from factttl import source_discovery
+
+    monkeypatch.delenv("FACTTTL_NEWS_DISCOVERY", raising=False)
+    monkeypatch.setattr(
+        source_discovery,
+        "discover_sources",
+        lambda *a, **k: pytest.fail("Discovery must be opt-in"),
+    )
+    result = run(tmp_path, "Notizia: NASA annuncia il lancio Artemis domani")
+    assert result["discovery"]["enabled"] is False
+
+
+def test_discovered_source_recalls_prior_scoped_correction(
+    tmp_path: Path,
+    checks: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from factttl import source_discovery
+
+    monkeypatch.setenv("FACTTTL_NEWS_DISCOVERY", "bing")
+    url = "https://one.example/article"
+    store = VerificationStore(tmp_path / "memory.sqlite3")
+    old_claim = "Notizia precedente: il lancio avviene oggi."
+    store.record(
+        VerificationResult(
+            url=url,
+            kind="news",
+            outcome="CONTRADICTED",
+            claim_text=old_claim,
+            observed_at=datetime.now(UTC).isoformat(),
+            rationale="The source explicitly denies that earlier date.",
+            evidence=[
+                {
+                    "provider": "ai_assessed_live_source",
+                    "scope": "current_source_consistency",
+                }
+            ],
+        ),
+        ttl_seconds=300,
+    )
+    monkeypatch.setattr(
+        source_discovery,
+        "discover_sources",
+        lambda *a, **k: {
+            "status": "FOUND",
+            "urls": [url],
+            "candidate_count": 1,
+            "query_sent": True,
+        },
+    )
+    monkeypatch.setattr(
+        message,
+        "_news_observation",
+        lambda url, lang, claim, country, cancel: VerificationResult(
+            url=url,
+            kind="news",
+            outcome="INCONCLUSIVE",
+            claim_text=claim,
+            observed_at=datetime.now(UTC).isoformat(),
+            rationale="New statement needs evidence",
+            evidence=[],
+        ),
+    )
+    result: dict[str, Any] = message.verify_message(
+        "Notizia: NASA annuncia il lancio Artemis domani", [], store
+    )
+    assert result["prior_corrections"][0]["claim_text"] == old_claim
+    assert result["prior_corrections"][0]["url"] == url
+
+
+def test_discovery_time_budget_reports_no_fetched_evidence(
+    tmp_path: Path,
+    checks: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    from factttl import source_discovery
+
+    ticks = iter([0.0, 60.0])
+    monkeypatch.setattr(time, "monotonic", lambda: next(ticks, 60.0))
+    monkeypatch.setenv("FACTTTL_NEWS_DISCOVERY", "bing")
+    monkeypatch.setattr(
+        source_discovery,
+        "discover_sources",
+        lambda *a, **k: {
+            "status": "FOUND",
+            "urls": ["https://one.example/article"],
+            "candidate_count": 1,
+            "query_sent": True,
+        },
+    )
+    monkeypatch.setattr(
+        message,
+        "_news_observation",
+        lambda *a, **k: pytest.fail(
+            "Do not start a fetch/inference without sufficient budget"
+        ),
+    )
+    result = run(tmp_path, "Notizia: NASA annuncia il lancio Artemis domani")
+    news = result["checks"][0]["result"]
+    assert news["outcome"] == "INCONCLUSIVE"
+    assert (
+        next(e for e in news["evidence"] if e["provider"] == "public_source_discovery")[
+            "fetched_source_count"
+        ]
+        == 0
+    )
+
+
 @pytest.mark.parametrize("text,links", [("x" * 20001, []), ("x", [URL] * 21)])
 def test_size_bounds(tmp_path: Path, text: str, links: list[str]) -> None:
     with pytest.raises(ValueError):

@@ -38,6 +38,16 @@
     if (className) node.className = className;
     parent.append(node); return node;
   }
+  function evidenceText(parent, tag, value, limit, className) {
+    const content = String(value);
+    text(parent, tag, content.length > limit ? `${content.slice(0, limit).trimEnd()}…` : content, className);
+    if (content.length > limit) {
+      const details = document.createElement("details"); details.className = "factttl-full-evidence";
+      text(details, "summary", "Leggi prove complete");
+      text(details, tag, content, className);
+      parent.append(details);
+    }
+  }
   function close() { if (dialog) { dialog.close(); dialog.remove(); dialog = null; lastFocus?.focus(); } }
   function open(state) {
     close(); lastFocus = state.badge;
@@ -60,6 +70,7 @@
             ? "Solo alcune proprietà hanno trovato riscontro."
             : null;
     if (intro) text(dialog, "p", intro, "factttl-sheet-intro");
+    if (state.result?.discovery?.enabled === true) text(dialog, "p", `Ricerca esterna Bing: inviate ${Number.isInteger(state.result.discovery.queries_sent) ? state.result.discovery.queries_sent : 0} query sul tema. I risultati RSS indicano fonti da leggere; i loro riassunti non sono prove.`, "factttl-sheet-note");
     const list = document.createElement("div"); list.className = "factttl-facts";
     for (const check of summary.checks) {
       const row = document.createElement("section"); row.className = "factttl-fact-row";
@@ -75,17 +86,22 @@
       if (check.kind === "news") {
         text(row, "p", "La data indica quanto è vecchia la notizia. La sua veridicità richiede prove sul contenuto e fonti aggiornate.", "factttl-fact-note");
         const evidence = (check.evidence || []).find(e => e.source_excerpt);
-        if (evidence) text(row, "blockquote", evidence.source_excerpt);
+        if (evidence) evidenceText(row, "blockquote", evidence.source_excerpt, 240);
         const sourceState = (check.evidence || []).find(e => e.source === "live_news_source");
         if (sourceState && sourceState.source_status !== "FETCHED") text(row, "p", "La fonte non ha restituito un testo leggibile: il contenuto della notizia non è stato confrontato.", "factttl-fact-note");
         const assessment = (check.evidence || []).find(e => e.provider === "ai_assessed_live_source");
         const comparison = (check.evidence || []).find(e => e.provider === "provided_source_comparison");
         if (comparison) text(row, "p", comparison.conflicting_sources ? "Le fonti fornite non concordano: questa affermazione non è confermata." : `Confrontate ${comparison.source_count} fonti fornite. La loro indipendenza non è stata accertata.`, "factttl-fact-note");
+        const discovery = (check.evidence || []).find(e => e.provider === "public_source_discovery");
+        if (discovery) {
+          const messages = {FOUND: `Lette ${discovery.fetched_source_count} fonti trovate tramite ricerca esterna. La loro indipendenza non è stata accertata.`, EMPTY: "La ricerca esterna non ha trovato fonti utilizzabili.", ERROR: "La ricerca esterna non è riuscita: questo non conferma né smentisce la notizia.", PRIVACY_REJECTED: "Query non inviata per proteggere dati potenzialmente privati."};
+          text(row, "p", messages[discovery.status] || "Ricerca esterna senza prove sufficienti.", "factttl-fact-note");
+        }
         if (assessment) {
           if (assessment.source_analysis_truncated === true || assessment.scope === "excerpt_consistency") text(row, "p", "Il confronto riguarda solo un estratto del testo: non verifica l’intero articolo né la verità della notizia.", "factttl-fact-note");
           text(row, "p", assessment.configured ? "Valutazione AI del testo letto nella fonte. Non è una conferma indipendente della notizia." : "Il motore AI per confrontare la notizia con le fonti non è ancora configurato.", "factttl-fact-note");
-          for (const citation of assessment.citations || []) if (citation.quote) text(row, "blockquote", citation.quote);
-          if (assessment.configured && check.rationale) text(row, "p", check.rationale, "factttl-fact-note");
+          for (const citation of assessment.citations || []) if (citation.quote) evidenceText(row, "blockquote", citation.quote, 350);
+          if (assessment.configured && check.rationale) evidenceText(row, "p", check.rationale, 400, "factttl-fact-note");
         }
       }
       list.append(row);

@@ -130,13 +130,24 @@ def _destination(url: str) -> tuple[str, str, str, str]:
     return normalized, host, str(addresses[0][4][0]), target
 
 
-def _fetch(url: str, *, language: str | None = None) -> tuple[str, int, str, bytes]:
+def _fetch(
+    url: str,
+    *,
+    language: str | None = None,
+    allowed_hosts: frozenset[str] | None = None,
+) -> tuple[str, int, str, bytes]:
     if language is not None and language not in {"it", "en", "de", "fr", "es"}:
         raise ValueError("Unsupported source language")
     current = url
     deadline = time.monotonic() + TOTAL_TIMEOUT_SECONDS
     visited: set[str] = set()
     for hop in range(MAX_REDIRECTS + 1):
+        # Restrict every hop before DNS or an outbound request can disclose queries.
+        if (
+            allowed_hosts is not None
+            and urlsplit(current).hostname not in allowed_hosts
+        ):
+            raise UnsafeURL("Redirect destination is outside the allowed hosts")
         normalized, host, address, target = _destination(current)
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -209,6 +220,9 @@ class _PageParser(HTMLParser):
         self.title = ""
         self._text_chunks: list[str] = []
         self._text_size = 0
+        self._semantic_nodes: list[str] = []
+        self._article_chunks: list[str] = []
+        self._main_chunks: list[str] = []
         self._in_title = False
         self._in_json = False
         self._hidden = False
@@ -220,7 +234,14 @@ class _PageParser(HTMLParser):
     def text(self) -> str:
         return "".join(self._text_chunks)
 
+    @property
+    def source_text(self) -> str:
+        """Prefer marked article content; this is extraction, not source trust."""
+        return "".join(self._article_chunks or self._main_chunks or self._text_chunks)
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"article", "main"}:
+            self._semantic_nodes.append(tag)
         attributes = dict(attrs)
         style = (attributes.get("style") or "").replace(" ", "").lower()
         if tag not in {"meta", "input", "link", "img", "br", "hr", "source", "wbr"}:
@@ -257,6 +278,10 @@ class _PageParser(HTMLParser):
                 self.publication_dates.append(value)
 
     def handle_endtag(self, tag: str) -> None:
+        if tag in self._semantic_nodes:
+            while self._semantic_nodes:
+                if self._semantic_nodes.pop() == tag:
+                    break
         if tag in self._hidden_nodes:
             while self._hidden_nodes:
                 if self._hidden_nodes.pop() == tag:
@@ -289,6 +314,10 @@ class _PageParser(HTMLParser):
             part = (" " + data)[: MAX_BYTES - self._text_size]
             self._text_chunks.append(part)
             self._text_size += len(part)
+            if "article" in self._semantic_nodes:
+                self._article_chunks.append(part)
+            if "main" in self._semantic_nodes:
+                self._main_chunks.append(part)
 
 
 def _nodes(value: object) -> list[dict[str, Any]]:
@@ -1046,7 +1075,7 @@ def read_source_evidence(url: str, *, language: str | None = None) -> dict[str, 
     if _blocked_page(parser):
         result["rationale"] = "The source presents a login or anti-bot challenge"
         return result
-    text = " ".join(parser.text.split())
+    text = " ".join(parser.source_text.split())
     result.update(
         status="FETCHED",
         title=parser.title,

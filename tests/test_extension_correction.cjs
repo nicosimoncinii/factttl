@@ -38,6 +38,13 @@ test("live price updates a cart estimate without calling the original estimate f
   assert.equal(f[0].original, "9,99 EUR (stima)");
   assert.equal(f[0].observed, "10.99 EUR");
   assert.equal(f[0].scope, "estimate_update_not_false_claim");
+  assert.match(correctionPrompt(f), /una stima diversa non era un'affermazione falsa/);
+});
+test("grouped-thousands estimates never become a fabricated tail amount", () => {
+  const e = entry({kind: "product_price", outcome: "SUPPORTED", expected_value: null, observed_value: "10.99 EUR"});
+  for (const text of ["Prezzo circa 1.299,99 EUR", "Prezzo indicativo 1 299,99 EUR", "Prezzo circa 1,299.99 EUR"]) {
+    e.text = text; assert.deepEqual(collectCorrections([e]), []);
+  }
 });
 test("news contradiction needs anchored citations and keeps source-relative scope", () => {
   const f = collectCorrections([entry({kind: "news", claim_text: "NASA ha annunciato X", expected_value: null, observed_value: null, evidence: [{provider: "ai_assessed_live_source", assessment: "CONTRADICTED", citations: [{source_url: url, quote: "Source says Y"}]}]})]);

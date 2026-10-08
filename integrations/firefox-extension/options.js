@@ -191,6 +191,7 @@ const connectionLabel = document.getElementById("connection-label");
 const newsEngineState = document.getElementById("news-engine-state");
 const newsEngineLabel = document.getElementById("news-engine-label");
 const newsEngineDescription = document.getElementById("news-engine-description");
+const newsDiscoveryDescription = document.getElementById("news-discovery-description");
 const preferencesForm = document.getElementById("preferences-form");
 const countrySelect = document.getElementById("country");
 const languageSelect = document.getElementById("language");
@@ -264,6 +265,15 @@ function connection(state, labelKey) {
 
 function renderNewsEngine(engine) {
   newsEngineState.hidden = false;
+  const discoveryCopy = {
+    it: ["Ricerca esterna Bing attivata: query sul tema sono inviate a Bing. I riassunti RSS non sono prove; leggiamo le fonti trovate. L’indipendenza delle fonti non è garantita.", "Ricerca esterna disattivata: confronto solo con i link forniti. Per attivarla sul PC usa Start-FactTTL-Browser.ps1 -NewsDiscovery bing e riavvia il servizio.", "Stato della ricerca esterna non disponibile."],
+    en: ["External Bing search enabled: topic queries are sent to Bing. RSS snippets are not evidence; discovered sources are read. Source independence is not guaranteed.", "External search disabled: only supplied links are compared. Enable it with Start-FactTTL-Browser.ps1 -NewsDiscovery bing and restart the service.", "External search status unavailable."],
+    de: ["Externe Bing-Suche aktiviert: Themenanfragen werden an Bing gesendet. RSS-Auszüge sind keine Belege; gefundene Quellen werden gelesen. Unabhängigkeit ist nicht garantiert.", "Externe Suche deaktiviert: nur angegebene Links werden verglichen. Aktivieren mit Start-FactTTL-Browser.ps1 -NewsDiscovery bing und Dienst neu starten.", "Status der externen Suche nicht verfügbar."],
+    fr: ["Recherche Bing externe activée : les requêtes thématiques sont envoyées à Bing. Les extraits RSS ne sont pas des preuves ; les sources trouvées sont lues. Leur indépendance n’est pas garantie.", "Recherche externe désactivée : seuls les liens fournis sont comparés. Activer avec Start-FactTTL-Browser.ps1 -NewsDiscovery bing puis redémarrer le service.", "État de recherche externe indisponible."],
+    es: ["Búsqueda externa Bing activada: las consultas temáticas se envían a Bing. Los extractos RSS no son pruebas; se leen las fuentes encontradas. Su independencia no está garantizada.", "Búsqueda externa desactivada: solo se comparan los enlaces proporcionados. Activar con Start-FactTTL-Browser.ps1 -NewsDiscovery bing y reiniciar el servicio.", "Estado de búsqueda externa no disponible."],
+  };
+  const discoveryState = engine?.discovery_provider === "bing" && engine.discovery_sends_query === true ? 0 : engine?.discovery_provider === "disabled" ? 1 : 2;
+  newsDiscoveryDescription.textContent = discoveryCopy[language][discoveryState];
   if (!engine || typeof engine.configured !== "boolean") {
     newsEngineState.dataset.state = "unknown";
     newsEngineLabel.textContent = t("newsEngineUnknown");

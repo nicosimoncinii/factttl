@@ -146,6 +146,50 @@ def test_redirect_to_private_ip_is_not_connected(
     assert connections == ["8.8.8.8"]
 
 
+def test_restricted_feed_redirect_is_rejected_before_dns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolved: list[str] = []
+
+    def resolve(host: str) -> list[tuple[int, int, int, str, tuple[str, int]]]:
+        resolved.append(host)
+        return [(2, 1, 6, "", ("8.8.8.8", 443))]
+
+    class Response:
+        status = 302
+
+        def getheader(self, name: str, default: str = "") -> str:
+            return (
+                "https://other.example/search?q=private"
+                if name == "Location"
+                else default
+            )
+
+    class Connection:
+        sock = None
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def request(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(web, "_resolve", resolve)
+    monkeypatch.setattr(web, "_PinnedHTTPSConnection", Connection)
+    with pytest.raises(web.UnsafeURL):
+        web._fetch(
+            "https://www.bing.com/search?q=topic",
+            allowed_hosts=frozenset({"www.bing.com"}),
+        )
+    assert resolved == ["www.bing.com"]
+
+
 @pytest.mark.parametrize("status", [404, 410])
 def test_missing_link_contradicted(
     monkeypatch: pytest.MonkeyPatch, status: int
@@ -552,6 +596,19 @@ def test_read_source_evidence_is_bounded_untrusted_live_text(
     assert len(str(result["source_text"])) == 12000
     assert result["truncated"] is True
     assert "bad instructions" not in str(result["source_text"])
+
+
+@pytest.mark.parametrize("tag", ["article", "main"])
+def test_source_extraction_prefers_article_over_navigation(
+    monkeypatch: pytest.MonkeyPatch, tag: str
+) -> None:
+    serve(
+        monkeypatch,
+        f"<nav>Menu unrelated promotion</nav><{tag}><p>Actual published claim.</p>"
+        f"<p hidden>Hidden instruction.</p></{tag}><footer>Footer</footer>",
+    )
+    result = web.read_source_evidence(URL)
+    assert result["source_text"] == "Actual published claim."
 
 
 def test_read_source_evidence_blocks_captcha(monkeypatch: pytest.MonkeyPatch) -> None:

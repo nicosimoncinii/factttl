@@ -28,6 +28,10 @@ stable SDK, a signed Firefox release, or independent verification of world facts
   the fetched source. Conclusions require citations in that source and remain
   attributed to AI source-consistency assessment.
 - Source dates, accessibility and model readiness never prove truth.
+- Optional Bing RSS discovery submits a bounded topic query using the selected
+  country/language. Up to two discovered publisher pages are read through the
+  protected HTTPS fetcher. RSS snippets are not evidence. Search is disabled by
+  default and its outbound query is disclosed in settings.
 - Up to three supplied sources for one assertion are compared once each. Conflicts
   and incomplete comparisons remain inconclusive. Long sources use an explicitly
   limited 1,500-character excerpt, shown as partial evidence in the UI.
@@ -37,7 +41,9 @@ stable SDK, a signed Firefox release, or independent verification of world facts
 
 ## Remaining product work
 
-1. Discover and compare independent sources for claims without supplied URLs.
+1. Broaden claim extraction and assess source relevance/independence. Automatic
+   discovery currently recognizes explicit news language; it does not certify
+   every factual sentence or the independence of different publisher domains.
 2. Signed Firefox distribution and a simpler normal installation experience.
 3. Locale-specific merchant coverage and delivery destination confirmation.
 4. Host-supported model context: a visual badge alone cannot teach ChatGPT to

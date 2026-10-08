@@ -100,6 +100,10 @@
 .factttl-fact-value { font-size: 17px; font-weight: 600; }
 .factttl-fact-note, .factttl-sheet-note, .factttl-sheet-time { font-size: 13px; color: #596d85; }
 .factttl-sheet blockquote { margin: 12px 0; padding: 12px; border-left: 2px solid #b7c7dc; font-size: 13px; }
+.factttl-full-evidence { margin: 8px 0 14px; font-size: 13px; }
+.factttl-full-evidence summary { cursor: pointer; color: #2764a5; padding: 6px 0; }
+.factttl-full-evidence summary:focus-visible { outline: 2px solid #2764a5; outline-offset: 3px; }
+.factttl-full-evidence[open] { overflow-wrap: anywhere; }
 .factttl-sheet footer { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
 .factttl-sheet footer a { color: #2764a5; padding: 7px 0; margin-right: 10px; }
 .factttl-sheet button { border-radius: 8px; }
@@ -122,6 +126,7 @@
   .factttl-muted { color: #b7c7dc; }
   .factttl-sheet { background: #152334; color: #e8eef6; border-color: #3d5268; }
   .factttl-sheet::backdrop { background: #071018b3; }
+  .factttl-full-evidence summary { color: #9ec8fa; }
 }
 
 @media (prefers-reduced-motion: reduce) {

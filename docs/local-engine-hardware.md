@@ -19,6 +19,13 @@ environment variables. An already running bridge requires restart to apply a
 different profile. `scripts/Test-FactTTL-News.ps1` prints non-secret runtime and
 hardware diagnostics and never downloads a model.
 
+Optional source discovery is independent of CPU/GPU selection. Add
+`-NewsDiscovery bing` to the bridge startup to opt in to external Bing RSS
+queries; `-NewsDiscovery disabled` turns those queries off. The choice persists
+locally and changes require restarting an active bridge. Analysis stays on the
+local model, but discovery sends a derived query outside the PC. See
+[network and privacy details](privacy-and-network.md).
+
 16 GB RAM is the recommended starting point for this model and other desktop
 applications. An 8 GB computer is not a validated target; available memory, CPU
 instructions, drivers, and other applications matter. No dedicated GPU is
@@ -40,7 +47,8 @@ with supplied evidence, not universal truth, and must pass citation validation.
 
 The full adapter, including its JSON schema and validated citations, completed a
 synthetic contradiction check on this PC in 30.53 seconds with GPU disabled.
-Message analysis currently uses at most the first 1,500 source characters and
+Message analysis currently uses a contiguous excerpt of at most 1,500 characters,
+selected by topic overlap within the bounded fetched source text, and
 explicitly flags a longer source as an excerpt; the profile limits above are
 upper bounds, not a promise to analyze the entire article.
 

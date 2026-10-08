@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime
-from threading import Event
+from threading import Event, Lock
 from urllib.parse import urlsplit
 
 from factttl.verification import VerificationResult, parse_timestamp
@@ -28,7 +29,7 @@ _NEGATIVE = re.compile(
 _POSITIVE = re.compile(r"\b(?:disponibile|in stock|available)\b", re.I)
 _DISCOUNT = re.compile(r"\b(?:in sconto|scontat[oa]|discounted|on sale)\b", re.I)
 _NEWS = re.compile(
-    r"\b(?:annuncia|annuncio|notizia|notizie|latest|published|headline|news|"
+    r"\b(?:annuncia|annuncio|annunciato|annunciata|announced|notizia|notizie|latest|published|headline|news|"
     r"breaking|pubblicat[oa]|articolo|article|reported)\b",
     re.I,
 )
@@ -54,6 +55,23 @@ _LABELS = {
 
 COUNTRIES = frozenset({"IT", "US", "GB", "DE", "FR", "ES"})
 LANGUAGES = frozenset({"it", "en", "de", "fr", "es"})
+_LOCAL_INFERENCE_LOCK = Lock()
+
+
+def _analysis_excerpt(text: str, claim: str) -> str:
+    """Choose one contiguous window; omitted context remains explicitly partial."""
+    if len(text) <= 1500:
+        return text
+    terms = {word.casefold() for word in re.findall(r"\w+", claim) if len(word) >= 4}
+    starts = range(0, max(1, len(text) - 1499), 400)
+    # Topic overlap selects relevant evidence only; it never entails the claim.
+    start = max(
+        starts,
+        key=lambda offset: len(
+            terms & set(re.findall(r"\w+", text[offset : offset + 1500].casefold()))
+        ),
+    )
+    return text[start : start + 1500]
 
 
 def normalize_preferences(preferences: object = None) -> dict[str, str]:
@@ -121,21 +139,39 @@ def _news_observation(
         full_source_text = str(source.get("source_text", ""))
         # Small CPU contexts receive an explicit bounded excerpt. Never suggest
         # this selection establishes agreement of the complete article.
-        analysis_text = full_source_text[:1500]
+        analysis_text = _analysis_excerpt(full_source_text, claim_text)
         partial_source = bool(source.get("truncated")) or len(full_source_text) > 1500
         evidence[0]["source_analysis_truncated"] = partial_source
+        evidence[0]["source_excerpt"] = analysis_text[:500]
         evidence[0]["analysis_scope"] = (
             "excerpt_consistency" if partial_source else "current_source_consistency"
         )
 
-        assessment = assess_news_claim(
-            claim_text,
-            analysis_text,
-            str(source["final_url"]),
-            language=language or "it",
-            country=country,
-            source_observed_at=observed,
-        )
+        # Serialize automatic inference across jobs on common 16 GB PCs.
+        acquired = _LOCAL_INFERENCE_LOCK.acquire(timeout=5)
+        if not acquired:
+            assessment = {
+                "outcome": "INCONCLUSIVE",
+                "rationale": "Il motore locale è occupato; ricontrolla questa notizia.",
+                "citations": [],
+                "engine": "ollama_local",
+                "configured": bool(os.environ.get("FACTTTL_NEWS_MODEL")),
+                "error_reason": "inference_busy",
+            }
+        else:
+            try:
+                if cancellation_event is not None and cancellation_event.is_set():
+                    raise CancelledError("Message verification canceled")
+                assessment = assess_news_claim(
+                    claim_text,
+                    analysis_text,
+                    str(source["final_url"]),
+                    language=language or "it",
+                    country=country,
+                    source_observed_at=observed,
+                )
+            finally:
+                _LOCAL_INFERENCE_LOCK.release()
         outcome = str(assessment["outcome"])
         rationale = str(assessment["rationale"])[:7500]
         source_text = " ".join(str(source.get("source_text", "")).split())
@@ -219,6 +255,38 @@ def verify_message(
             raise CancelledError("Message verification canceled")
 
     check_cancellation()
+    job_deadline = time.monotonic() + 150
+
+    def observe_news(url: str, claim: str | None) -> VerificationResult:
+        check_cancellation()
+        # Reserve protected-fetch + model + bounded lock-wait time. If there is
+        # insufficient remaining budget, omitted evidence cannot be decisive.
+        if job_deadline - time.monotonic() < 95:
+            return VerificationResult(
+                url=url,
+                kind="news",
+                outcome="INCONCLUSIVE",
+                claim_text=claim,
+                observed_at=datetime.now(UTC).isoformat(),
+                rationale=(
+                    "Controllo incompleto: budget di tempo esaurito; "
+                    "ricontrolla la notizia."
+                ),
+                evidence=[
+                    {
+                        "provider": "verification_budget",
+                        "source_status": "NOT_FETCHED",
+                        "limitation": (
+                            "Evidence omitted because the bounded "
+                            "job budget was insufficient."
+                        ),
+                    }
+                ],
+            )
+        return _news_observation(
+            url, language, claim, region["country"], cancellation_event
+        )
+
     region = normalize_preferences(preferences)
     language = region["language"] if preferences is not None else None
     if not isinstance(text, str) or len(text) > 20000:
@@ -242,6 +310,8 @@ def verify_message(
         (url, "link_available", None, None) for url in urls
     ]
     news_groups: dict[str, list[str]] = {}
+    unlinked_news: list[str] = []
+    discovery_enabled = os.environ.get("FACTTTL_NEWS_DISCOVERY") == "bing"
     for fragment in text.splitlines():
         if not fragment.strip():
             continue
@@ -253,6 +323,17 @@ def verify_message(
         if not re.search(r"\w", prose):
             continue
         covered = prose
+        if discovery_enabled and not fragment_urls and _NEWS.search(prose):
+            # Select at most one explicitly marked news sentence, never the
+            # entire message or a generic personal assertion without a source.
+            for sentence in re.split(r"(?<=[.!?])\s+", prose.strip()):
+                if (
+                    _NEWS.search(sentence)
+                    and not _CONDITIONAL.search(sentence)
+                    and "?" not in sentence
+                ):
+                    unlinked_news.append(sentence)
+                    break
         semantic_candidate = (
             bool(os.environ.get("FACTTTL_NEWS_MODEL"))
             and not _CONDITIONAL.search(prose)
@@ -394,6 +475,70 @@ def verify_message(
                 )
             if "product_price" not in planned:
                 specifications.append((url, "product_price", None, observed_price))
+    discovery_results: dict[str, dict[str, object]] = {}
+    if discovery_enabled:
+        from factttl.source_discovery import discover_sources
+
+        candidates = dict.fromkeys(
+            [
+                *(
+                    context
+                    for _, kind, _, context in specifications
+                    if kind == "news" and context
+                ),
+                *unlinked_news,
+            ]
+        )
+        added_sources = 0
+        for claim in list(candidates)[:2]:
+            check_cancellation()
+            info = discover_sources(
+                claim, country=region["country"], language=region["language"]
+            )
+            original = list(
+                dict.fromkeys(
+                    url
+                    for url, kind, _, context in specifications
+                    if kind == "news" and context == claim
+                )
+            )
+            buckets = {_publisher_domain(url) for url in original}
+            selected: list[str] = []
+            discovered_urls = info.get("urls", [])
+            for candidate in (
+                discovered_urls if isinstance(discovered_urls, list) else []
+            ):
+                if not isinstance(candidate, str) or added_sources >= 2:
+                    break
+                bucket = _publisher_domain(candidate)
+                if bucket and bucket not in buckets:
+                    buckets.add(bucket)
+                    selected.append(candidate)
+                    added_sources += 1
+            info = {
+                **info,
+                "selected_source_count": len(selected),
+                "selected_urls": selected,
+            }
+            discovery_results[claim] = info
+            news_groups[claim] = [*original, *selected]
+            for candidate in selected:
+                specifications.append((candidate, "news", None, claim))
+                # Discovery happens after provided-link recall. Preserve prior
+                # corrections for sources first encountered through search too.
+                for prior in store.recall(url=candidate, limit=50)["claims"]:
+                    if prior["do_not_reuse_prior_assertion"]:
+                        corrections.append(
+                            {
+                                "url": candidate,
+                                "claim_id": prior["claim_id"],
+                                "claim_text": prior["result"]["claim_text"],
+                                "rationale": (
+                                    "Correzione precedente da ricontrollare; "
+                                    "non riutilizzare l'affermazione."
+                                ),
+                            }
+                        )
     unique = list(dict.fromkeys(specifications))
     unique.sort(key=lambda spec: spec[1] == "link_available")
     if len(unique) > 6:
@@ -413,11 +558,7 @@ def verify_message(
             if (source_url, claim) not in planned_news:
                 continue
             check_cancellation()
-            results.append(
-                _news_observation(
-                    source_url, language, claim, region["country"], cancellation_event
-                )
-            )
+            results.append(observe_news(source_url, claim))
         verdicts = {result.outcome for result in results}
         conflict = {"SUPPORTED", "CONTRADICTED"}.issubset(verdicts)
         # Absence of agreement is not corroboration. All supplied sources must
@@ -434,7 +575,40 @@ def verify_message(
             )
             else "INCONCLUSIVE"
         )
+        discovery_info = discovery_results.get(claim)
+        if discovery_info and (
+            discovery_info.get("status") != "FOUND"
+            or not discovery_info.get("selected_source_count")
+        ):
+            combined = "INCONCLUSIVE"
         merged = [item for result in results for item in result.evidence]
+        if discovery_info:
+            selected_urls = discovery_info["selected_urls"]
+            assert isinstance(selected_urls, list)
+            fetched_count = sum(
+                result.url in selected_urls
+                and any(
+                    item.get("source") == "live_news_source"
+                    and item.get("source_status") == "FETCHED"
+                    for item in result.evidence
+                )
+                for result in results
+            )
+            merged.append(
+                {
+                    "provider": "public_source_discovery",
+                    "discovery_provider": "bing_rss",
+                    "status": discovery_info["status"],
+                    "candidate_count": discovery_info["candidate_count"],
+                    "fetched_source_count": fetched_count,
+                    "independence_established": False,
+                    "query_sent": discovery_info["query_sent"],
+                    "limitation": (
+                        "External topic search; RSS snippets are not "
+                        "evidence. Sources may share an original report."
+                    ),
+                }
+            )
         for result in results:
             grouped_results[(result.url, claim)] = replace(
                 result,
@@ -471,8 +645,8 @@ def verify_message(
         try:
             check_cancellation()
             if kind == "news":
-                result = grouped_results.get((url, context or "")) or _news_observation(
-                    url, language, context, region["country"], cancellation_event
+                result = grouped_results.get((url, context or "")) or observe_news(
+                    url, context
                 )
             elif language is not None:
                 result = verify_url(url, kind, expected, context, language=language)
@@ -577,6 +751,18 @@ def verify_message(
         "unchecked_claims": unchecked[:40],
         "prior_corrections": corrections[:40],
         "preferences": region,
+        "discovery": {
+            "enabled": discovery_enabled,
+            "provider": "bing_rss" if discovery_enabled else None,
+            "queries_sent": sum(
+                bool(info.get("query_sent")) for info in discovery_results.values()
+            ),
+            "statuses": [info["status"] for info in discovery_results.values()],
+            "limitation": (
+                "Only a bounded topic query is sent to the search "
+                "engine. RSS snippets are never evidence."
+            ),
+        },
         "checked_at": datetime.now(UTC).isoformat(),
         "limitation": "Il badge riguarda solo le proprietà esplicitamente controllate. "
         "Non certifica la verità dell'intero messaggio; fonti, account "
@@ -586,6 +772,16 @@ def verify_message(
 
 def _clean_url(value: str) -> str:
     return value.rstrip(".,;!?:")
+
+
+def _publisher_domain(url: str) -> str:
+    """Group common subdomains; diversity is not proof of editorial independence."""
+    host = (urlsplit(url).hostname or "").lower().removeprefix("www.")
+    labels = host.split(".")
+    suffix = ".".join(labels[-2:])
+    if suffix in {"co.uk", "com.au", "co.jp", "com.br"}:
+        return ".".join(labels[-3:])
+    return suffix
 
 
 def _linked_claim(fragment: str, url: str) -> str | None:

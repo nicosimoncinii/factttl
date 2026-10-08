@@ -205,7 +205,7 @@ function pause(milliseconds, signal) {
 }
 
 async function verificationJob(token, controller, request, activeRequest) {
-  const expiry = setTimeout(() => controller.abort(), 90000);
+    const expiry = setTimeout(() => controller.abort(), 180000);
   let jobId;
   let finished = false;
   try {

@@ -108,12 +108,17 @@ def news_engine_health(model: str | None) -> dict[str, object]:
         profile_name = engine_profile().name
     except ValueError:
         profile_name = "invalid"
+    discovery = os.environ.get("FACTTTL_NEWS_DISCOVERY", "disabled")
+    if discovery not in {"disabled", "bing"}:
+        discovery = "invalid"
     base: dict[str, object] = {
         "kind": "ollama_local",
         "configured": bool(model),
         "model": model[:128] if model else None,
         "scope": "current_source_consistency",
         "inference_profile": profile_name,
+        "discovery_provider": discovery,
+        "discovery_sends_query": discovery == "bing",
         "limitation": (
             "Availability of a local model, not proof that inference succeeded."
         ),

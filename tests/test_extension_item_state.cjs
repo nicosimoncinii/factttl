@@ -58,6 +58,32 @@ function loadItemUI() {
 
 function textIn(element) { return element.textContent; }
 
+test("editing a reused link clears old evidence and updates its destination", () => {
+  const {api, document} = loadItemUI();
+  const anchor = new FakeElement("a");
+  anchor.href = "https://shop.example/old";
+  anchor.textContent = "Vecchio prodotto";
+  document.body.append(anchor);
+  const state = api.create(anchor, () => {});
+  api.update(state, {ok: true, result: {checks: [{result: {
+    url: anchor.href, kind: "product_price", outcome: "SUPPORTED", observed_value: "10 EUR",
+  }}]}});
+  state.badge.listeners.click();
+  const previousDialog = document.body.children.at(-1);
+  anchor.href = "https://shop.example/new";
+  anchor.textContent = "Nuovo prodotto";
+  api.invalidate(state, anchor);
+  assert.equal(state.result, undefined);
+  assert.equal(state.url, anchor.href);
+  assert.equal(state.title, "Nuovo prodotto");
+  assert.equal(state.badge.dataset.status, "PENDING");
+  assert.equal(previousDialog.parentElement, null);
+  state.badge.listeners.click();
+  const rendered = textIn(document.body.children.at(-1));
+  assert.match(rendered, /Nuovo prodotto/);
+  assert.doesNotMatch(rendered, /Dati confermati|10 EUR/);
+});
+
 test("opening an updated badge reads the same state object and current evidence", () => {
   const {api, document} = loadItemUI();
   const paragraph = new FakeElement("p");

@@ -120,5 +120,16 @@
     state.badge.textContent = `${summary.status === "SUPPORTED" ? "✓" : summary.status === "CONTRADICTED" ? "!" : "○"} ${summary.label}`;
     state.badge.setAttribute("aria-label", `${summary.label}: ${state.title}`);
   }
-  globalThis.FactTTLItemUI = {create, update, close, summarize};
+  function invalidate(state, node) {
+    // A reused DOM node can point to a different source after an assistant edit.
+    // Old evidence must disappear before the replacement request completes.
+    state.url = node.tagName === "A" ? node.href : null;
+    state.title = (node.textContent || "").trim().slice(0, 180);
+    state.result = undefined;
+    close();
+    state.badge.textContent = "Attendo…";
+    state.badge.dataset.status = "PENDING";
+    state.badge.setAttribute("aria-label", `Controllo in attesa: ${state.title}`);
+  }
+  globalThis.FactTTLItemUI = {create, update, invalidate, close, summarize};
 })();

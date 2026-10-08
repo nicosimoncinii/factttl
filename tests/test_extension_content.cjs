@@ -52,7 +52,7 @@ test("extension key matches the origin configured by the local bridge", () => {
   assert.ok(bridge.includes(`chrome-extension://${extensionId}`));
 });
 
-test("repeated citations to one destination create a single primary target", () => {
+test("repeated citations within one assertion block create a single primary target", () => {
   const makeAnchor = href => ({
     href,
     tagName: "A",
@@ -80,6 +80,34 @@ test("repeated citations to one destination create a single primary target", () 
 
   assert.equal(destinationKey(anchors[0].href), destinationKey(anchors[1].href));
   assert.deepEqual(itemTargets(root), [anchors[0], anchors[2]]);
+});
+
+test("different paragraphs keep separate assertions for the same source", () => {
+  const paragraphs = [
+    {tagName: "P", textContent: "Il prodotto costa attualmente 10 EUR e questa è la prima affermazione."},
+    {tagName: "P", textContent: "Il prodotto costa attualmente 20 EUR e questa è una seconda affermazione."},
+  ];
+  const anchors = paragraphs.map(paragraph => ({
+    href: "https://shop.example/item", tagName: "A", parentElement: paragraph,
+    closest: selector => selector === "p, tr" ? paragraph : null,
+  }));
+  paragraphs.forEach((paragraph, index) => {
+    paragraph.closest = () => null;
+    paragraph.contains = node => node === anchors[index];
+    paragraph.querySelector = () => null;
+  });
+  const root = {querySelectorAll: selector => selector === "a[href]" ? anchors : paragraphs};
+  assert.deepEqual(itemTargets(root), anchors);
+});
+
+test("product list item citations share scope across nested paragraphs", () => {
+  const item = {tagName: "LI", textContent: "Prodotto con descrizione e fonti ripetute per il controllo della disponibilità.", closest: () => null, querySelector: () => ({tagName: "P"})};
+  const anchors = ["https://www.amazon.it/dp/B0ABC12345", "https://amazon.it/gp/product/B0ABC12345?ref_=citation"].map(href => ({
+    href, tagName: "A", closest: selector => selector === "li" ? item : null,
+  }));
+  item.contains = node => anchors.includes(node);
+  const root = {querySelectorAll: selector => selector === "a[href]" ? anchors : [item]};
+  assert.deepEqual(itemTargets(root), [anchors[0]]);
 });
 
 test("Amazon product URL variants deduplicate by marketplace and ASIN", () => {

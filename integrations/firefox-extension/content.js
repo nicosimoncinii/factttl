@@ -84,15 +84,18 @@
         return u.protocol === "https:" && !HOST_PAGES.has(u.hostname) && !u.username && !u.password;
       } catch { return false; }
     });
-    const seenDestinations = new Set();
+    const seenDestinations = new Map();
     const anchors = externalAnchors.filter(node => {
       try {
         const u = new URL(node.href);
-        // One primary badge per destination in a single assistant message. Repeated
-        // citations to the same page reuse that item's result instead of adding noise.
+        // Deduplicate citations only within their assertion block. A second
+        // paragraph can make a different claim about the same destination.
+        const block = sourceFor(node) || root;
+        let destinations = seenDestinations.get(block);
+        if (!destinations) { destinations = new Set(); seenDestinations.set(block, destinations); }
         const key = destinationKey(u.href);
-        if (!key || seenDestinations.has(key)) return false;
-        seenDestinations.add(key);
+        if (!key || destinations.has(key)) return false;
+        destinations.add(key);
         return true;
       }
       catch { return false; }
@@ -106,7 +109,7 @@
     return [...anchors, ...paragraphs];
   }
 
-  function sourceFor(node) { return node.tagName === "A" ? node.closest("p, li, tr") || node.parentElement : node; }
+  function sourceFor(node) { return node.tagName === "A" ? node.closest("li") || node.closest("p, tr") || node.parentElement : node; }
 
   const exported = {chatKey, hostKind, serializeMessage, normalizeChecks, destinationKey, itemTargets, sourceFor, LABELS};
   if (typeof module !== "undefined" && module.exports) module.exports = exported;
@@ -228,8 +231,7 @@
       if (state.lastText !== signature) {
         state.lastText = signature;
         state.changedAt = now;
-        state.badge.textContent = "Attendo…";
-        state.badge.dataset.status = "PENDING";
+        FactTTLItemUI.invalidate(state, node);
       }
       if (signature === state.signature && now - state.finishedAt < 300000) continue;
       if (state.pending || now - state.changedAt < 1400 || isStreaming()) continue;

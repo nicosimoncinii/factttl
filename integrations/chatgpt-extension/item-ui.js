@@ -133,7 +133,7 @@
     const title = text(dialog, "h2", sourceTitle || state.title || "Contenuto da verificare"); title.id = "factttl-sheet-title";
     const conclusion = text(dialog, "p", summary.label, "factttl-conclusion"); conclusion.dataset.status = summary.status;
     const intro = summary.status === "SEARCH"
-      ? "Questo link apre una ricerca, non un’offerta precisa. Prezzo, disponibilità e compatibilità dei prodotti non sono stati verificati. FactTTL chiede alla chat di cercare link diretti al prodotto nel negozio richiesto."
+      ? "Questo link apre una ricerca, non un’offerta precisa. Prezzo, disponibilità e compatibilità dei prodotti non sono stati verificati. Per queste proprietà serve una pagina prodotto precisa."
       : summary.status === "CONTRADICTED"
       ? "Il dato indicato non coincide con la fonte consultata."
       : summary.status === "ACCESSIBLE"
@@ -226,13 +226,6 @@
       const source = text(actions, "a", "Apri la fonte"); source.href = state.url; source.target = "_blank"; source.rel = "noopener noreferrer";
     }
     const retry = text(actions, "button", "Aggiorna il controllo"); retry.type = "button"; retry.addEventListener("click", () => { close(); state.retry(); });
-    if (summary.status === "CONTRADICTED") {
-      const copy = text(actions, "button", "Copia la correzione per la chat"); copy.type = "button";
-      copy.addEventListener("click", async () => {
-        const lines = summary.checks.filter(c => c.outcome === "CONTRADICTED").map(c => c.kind === "news" ? `Affermazione: ${c.claim_text || state.title}. Valutazione AI rispetto alla fonte: ${c.rationale || "in contrasto"}. Fonte: ${c.url}` : `${kinds[c.kind] || "Dato"}: indicato ${c.expected_value || "—"}, osservato ${c.observed_value || "—"}. Fonte: ${c.url}`);
-        try { await navigator.clipboard.writeText(`FactTTL ha trovato un contrasto con la fonte attuale:\n${lines.join("\n")}\nCorreggi la risposta e ricontrolla prima di ripetere queste indicazioni.`); copy.textContent = "Copiata: incolla nella chat"; } catch { copy.textContent = "Copia non disponibile"; }
-      });
-    }
     dialog.append(actions); dialog.addEventListener("cancel", event => { event.preventDefault(); close(); });
     document.body.append(dialog); dialog.showModal();
   }

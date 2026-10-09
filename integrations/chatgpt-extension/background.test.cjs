@@ -79,41 +79,16 @@ async function ready(h) {
   await h.send({type: "SET_CHAT_STATE", payload: {chatId: payload.chatId, enabled: true}});
 }
 
-test("correction reservation persists, deduplicates tabs and caps each user request", async () => {
-  const h = harness(); await ready(h);
-  const reserve = key => h.send({type: "RESERVE_CORRECTION", payload: {chatId: payload.chatId, key}});
-  const [first, second] = await Promise.all([reserve("a".repeat(64)), reserve("a".repeat(64))]);
-  assert.equal(first.reserved, true); assert.equal(second.reserved, false);
-  assert.equal((await reserve("b".repeat(64))).reserved, true);
-  assert.equal((await reserve("c".repeat(64))).budget_exhausted, true);
-  await h.send({type: "RESET_CORRECTION_BUDGET", payload: {chatId: payload.chatId}});
-  assert.equal((await reserve("c".repeat(64))).reserved, true);
-  const restarted = harness(null, {storage: h.storage});
-  assert.equal((await restarted.send({type: "RESERVE_CORRECTION", payload: {chatId: payload.chatId, key: "c".repeat(64)}})).reserved, false);
+test("version 0.4 removes legacy composer-correction state and APIs", async () => {
+  const h = harness(null, {storage: {factttlCorrections: {modes: {[payload.chatId]: true}, ledger: {}, budget: {}}}});
+  const state = await h.send({type: "GET_CHAT_STATE", payload: {chatId: payload.chatId}});
+  assert.equal(h.storage.factttlCorrections, undefined);
+  assert.equal(Object.hasOwn(state, "autoCorrection"), false);
+  await h.send({type: "SET_TOKEN", payload: {token: TOKEN}}, h.optionsSender);
+  assert.equal((await h.send({type: "SET_CORRECTION_MODE", payload: {chatId: payload.chatId, enabled: true}})).error, "INVALID_MESSAGE");
+  assert.equal((await h.send({type: "GET_MEMORY_CONTEXT", payload: {chatId: payload.chatId, query: "old"}})).error, "INVALID_MESSAGE");
 });
-test("a canceled draft reservation can be released only by its owner token", async () => {
-  const h = harness(); await ready(h);
-  const item = {chatId: payload.chatId, key: "d".repeat(64)};
-  const first = await h.send({type: "RESERVE_CORRECTION", payload: item});
-  await h.send({type: "RELEASE_CORRECTION", payload: {...item, reservation: "wrong"}});
-  assert.equal((await h.send({type: "RESERVE_CORRECTION", payload: item})).reserved, false);
-  await h.send({type: "RELEASE_CORRECTION", payload: {...item, reservation: first.reservation}});
-  assert.equal((await h.send({type: "RESERVE_CORRECTION", payload: item})).reserved, true);
-});
-test("disabled or foreign pages cannot reserve correction sends", async () => {
-  const h = harness(); const item = {chatId: payload.chatId, key: "e".repeat(64)};
-  assert.equal((await h.send({type: "RESERVE_CORRECTION", payload: item})).ok, false);
-  await ready(h);
-  assert.equal((await h.send({type: "RESERVE_CORRECTION", payload: item}, {...chat, url: "https://evil.example"})).ok, false);
-  assert.equal((await h.send({type: "RESERVE_CORRECTION", payload: {...item, key: "unsafe"}})).ok, false);
-});
-test("manual correction preference survives a background restart and blocks reservations", async () => {
-  const h = harness(); await ready(h);
-  await h.send({type: "SET_CORRECTION_MODE", payload: {chatId: payload.chatId, enabled: false}});
-  const restarted = harness(null, {storage: h.storage});
-  assert.equal((await restarted.send({type: "GET_CHAT_STATE", payload: {chatId: payload.chatId}})).autoCorrection, false);
-  assert.equal((await restarted.send({type: "RESERVE_CORRECTION", payload: {chatId: payload.chatId, key: "f".repeat(64)}})).ok, false);
-});
+
 test("Amazon advertising wrapper opens the resolved same-market product offer", async () => {
   const direct = "https://www.amazon.it/gp/aw/d/B0DKF9NCN1?seller=SellerA";
   const offer = {url: direct, asin: "B0DKF9NCN1", status: "OBSERVED", source: "browser_rendered_amazon", scope: "browser_current_offer", observed_at: new Date().toISOString(), title: "ESP32", availability: "available", price: "10.99", currency: "EUR", list_price: null};
@@ -135,18 +110,6 @@ test("browser offer is read in an inactive owned tab and accompanies only the re
   assert.equal(h.broadcasts.find(value => value.removed).removed, 99);
 });
 
-test("memory context requires an enabled trusted chat and stays on the authenticated loopback bridge", async () => {
-  const h = harness(async () => new Response(JSON.stringify({findings: []}))); await ready(h);
-  const result = await h.send({type: "GET_MEMORY_CONTEXT", payload: {chatId: payload.chatId, query: "ESP32 prezzo"}});
-  assert.equal(result.ok, true);
-  const request = h.requests[0]; assert.equal(request.url, "http://127.0.0.1:8765/context");
-  assert.equal(JSON.parse(request.init.body).query, "ESP32 prezzo");
-  assert.equal(request.init.headers.Authorization, `Bearer ${TOKEN}`);
-  await h.send({type: "SET_CHAT_STATE", payload: {chatId: payload.chatId, enabled: false}});
-  const blocked = await h.send({type: "GET_MEMORY_CONTEXT", payload: {chatId: payload.chatId, query: "ESP32"}});
-  assert.equal(blocked.ok, false); assert.equal(h.requests.length, 1);
-});
-
 test("manifest has a stable extension origin and minimal access", () => {
   const hex = createHash("sha256").update(Buffer.from(manifest.key, "base64")).digest("hex").slice(0, 32);
   assert.equal([...hex].map(c => String.fromCharCode(97 + parseInt(c, 16))).join(""), ID);
@@ -155,6 +118,7 @@ test("manifest has a stable extension origin and minimal access", () => {
   assert.equal(manifest.host_permissions.length, 13);
   for (const value of manifest.host_permissions.slice(1)) assert.match(value, /^https:\/\/(?:www\.)?amazon\.(?:it|com|co\.uk|de|fr|es)\/\*$/);
   assert.equal(manifest.content_scripts[1].js[0], "merchant.js");
+  assert.deepEqual(manifest.content_scripts[0].js, ["amazon-url.js", "item-ui.js", "content.js"]);
   assert.deepEqual(manifest.content_scripts[0].matches, [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",

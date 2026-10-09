@@ -117,44 +117,33 @@ riconosciuti. Un badge positivo riguarda i controlli effettuati e **non certific
 l'intera risposta**. CAPTCHA, accesso negato, claim non riconosciuti e mancanza
 di prove producono risultati inconcludenti o parziali.
 
-Le correzioni sono conservate da FactTTL. Con **Memoria attiva**, al tuo prossimo
-invio lo strumento allega alla bozza un blocco visibile con i controlli pertinenti:
-affermazione precedente, valore osservato, fonte e scadenza. Questo permette al
-modello di ricevere la correzione anche in una nuova chat attivata. Non modifica
-la memoria interna del provider. Con **Correzione automatica**, dopo i controlli
-di una risposta lo strumento può inviare un messaggio visibile al modello: mostra
-i riscontri, chiede di ammettere e correggere il dato errato, sostituire le offerte
-esaurite e ricalcolare il carrello. Le alternative della nuova risposta vengono
-ricontrollate. Un link di ricerca Amazon richiede la selezione di un'offerta
-precisa: aprire i risultati di ricerca non prova prezzo o disponibilità.
+L'estensione è passiva: mostra i riscontri alla persona che legge e non legge,
+modifica o intercetta il campo messaggio. Non clicca Invio e non pubblica
+correzioni nella conversazione. La versione 0.4 rimuove anche lo stato salvato
+delle precedenti funzioni di correzione automatica.
+
+Per far usare le verifiche direttamente al modello collega separatamente il
+server MCP di FactTTL. I tool `verify_answer` e `verify_recommendations`
+restituiscono al modello prove, correzioni precedenti e revisioni richieste come
+risultati strutturati. Il modello può quindi correggere la propria bozza prima
+della risposta finale e verificare di nuovo eventuali link sostitutivi. La
+memoria SQLite appartiene al server locale: non modifica la memoria interna o i
+pesi del provider, e una chat successiva ne beneficia quando richiama i tool.
+La procedura è in [prova ChatGPT](../../docs/chatgpt-local-test.md).
+
+Un link di ricerca Amazon richiede la selezione di un'offerta precisa: aprire i
+risultati di ricerca non prova prezzo o disponibilità.
 Anche i pulsanti prodotto che puntano a `chatgpt.com/?hints=search&q=...`
 sono ricerche, non offerte Amazon. Sono segnalati localmente senza aprire
 una pagina privata di ChatGPT; immagini prodotto e favicon non sono offerte.
-Se manca una prova su un'offerta Amazon, chiede di cercare riscontri o un'altra
-offerta: questa richiesta non dichiara il dato falso o il prodotto esaurito.
+Se manca una prova su un'offerta Amazon, il risultato resta inconcludente: non
+dichiara il dato falso o il prodotto esaurito.
 
-Il messaggio originale resta visibile, con una scheda di correzione attribuita
-a FactTTL; lo strumento non riscrive silenziosamente il testo del modello.
-L'invio automatico attende un campo messaggio vuoto, una risposta completa e
-la chat visibile. È limitato a due tentativi per richiesta, con un registro locale
-che evita invii duplicati dopo un ricaricamento. Il modello del provider può
-comunque non seguire la richiesta: le offerte restano segnalate finché nuovi
-riscontri non le confermano. Puoi spegnere l'autocorrezione separatamente.
-Se il controllo mostra **Correzione manuale**, l'invio automatico è spento:
-premilo per passare a **Correzione automatica**. La scelta resta salvata per
-questa chat. **Memoria attiva** da sola non avvia una correzione.
-
-Il collegamento nelle impostazioni conferma solo il servizio dell'estensione
-sul PC. L'app FactTTL selezionabile in ChatGPT usa invece un server MCP e un
-tunnel separati: un suo errore di connessione non prova che l'estensione sia
-spenta. I messaggi di correzione e memoria indicano l'origine dei riscontri,
-senza inventare chiamate a quell'app. Non disponibile significa un esplicito
-riscontro di esaurimento del prodotto; una fonte mancante resta non verificata.
-
-Spegnere la memoria
-o FactTTL rimuove un suo allegato ancora nella bozza; un allegato modificato va
-rimosso manualmente prima dell'invio con lo strumento spento. Puoi anche usare
-**Copia la correzione per la chat**. Dettagli in [prompt memory](../../docs/prompt-memory.md).
+Il collegamento nelle impostazioni conferma solo il servizio dei badge sul PC.
+L'app FactTTL selezionabile in ChatGPT usa invece un server MCP e un tunnel
+separati: un suo errore di connessione non prova che l'estensione sia spenta.
+**Non disponibile** richiede un esplicito riscontro di esaurimento del prodotto;
+una fonte mancante resta non verificata.
 
 Per un link prodotto Amazon, il lettore può aprire una scheda inattiva e leggere
 l'offerta principale nel browser: prezzo, disponibilità e prezzo di riferimento
@@ -163,8 +152,8 @@ restano distinti; lo strumento non effettua acquisti né aggira CAPTCHA.
 
 ## Dati e accesso
 
-- Il controllo legge le risposte dell'assistente nelle chat attive. La memoria
-  legge la bozza solo per preparare il tuo invio quando è attivata.
+- Il controllo legge le risposte dell'assistente soltanto nelle chat in cui
+  attivi i badge. Non legge né modifica la bozza dell'utente.
 - Testo e link vengono inviati al servizio FactTTL sul tuo PC; il servizio può
   consultare le fonti web indicate per verificarli.
 - Il token rimane nello storage locale limitato ai contesti fidati. Su Firefox
@@ -175,12 +164,9 @@ restano distinti; lo strumento non effettua acquisti né aggira CAPTCHA.
   scelti dalle pagine. Nessun cookie o credenziale di ChatGPT/Amazon viene
   inoltrato al bridge. Il lettore Amazon usa la normale sessione del browser
   sui sei marketplace autorizzati; invia al bridge solo i campi dell'offerta.
-- Con l'autocorrezione attiva il provider riceve i dati e, per notizie contestate,
-  brevi passaggi di prova, in un messaggio visibile. Con la memoria spenta non
-  vengono aggiunte verifiche delle richieste precedenti a quel messaggio.
-- Al tuo invio, il provider della chat riceve anche il blocco delle verifiche
-  pertinenti quando la memoria è attiva. Non vengono allegati HTML o citazioni
-  integrali delle fonti. Vedi [privacy](../../docs/privacy-and-network.md).
+- Il provider riceve i dati solo attraverso una chiamata esplicita ai tool MCP
+  collegati. I badge del browser non inviano messaggi alla chat e non forniscono
+  contesto nascosto al modello. Vedi [privacy](../../docs/privacy-and-network.md).
 - Le opzioni e gli script sono locali; non viene caricato codice remoto.
 
 Le verifiche passano attraverso job locali con risposte HTTP immediate e polling

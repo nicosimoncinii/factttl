@@ -1,14 +1,29 @@
 # MCP integration
 
-## Optional live checks and memory
+## Native answer checks and local memory
 
-Add `--enable-verification` to enable `inspect_live_source`, `verify_content`,
+Add `--enable-verification` to enable the native answer workflow as well as the
+lower-level source and history tools. The primary tools are:
+
+| Tool | Purpose |
+|---|---|
+| `verify_answer` | Check a draft containing current news, direct product links, prices, stock or discounts. |
+| `verify_recommendations` | Check structured recommendation rows while preserving name, quantity and an optional asserted unit price. |
+| `submit_answer_verification` | Start the same answer check without waiting for slow local inference. |
+| `get_answer_verification` | Poll a submitted job until its real result is complete. |
+
+Their structured results include earlier relevant SQLite findings before the
+new check, property-level evidence, and `required_revisions`. Evidence reaches
+the model as an MCP tool result. No FactTTL component writes a prompt into the
+user's composer, clicks Send, or posts a correction message.
+
+The lower-level `inspect_live_source`, `verify_content`,
 `assess_claim_with_live_evidence`, `recall_content_checks` and
-`report_content_correction`. These tools fetch public HTTPS sources and/or
-persist local evidence and corrections, with write/open-world annotations
-matching their behavior. The default remains the single offline tool described
-below. See [verification and memory](verification-model.md) for inputs, outcomes,
-reuse rules and limitations.
+`report_content_correction` tools remain available for focused work. They fetch
+public HTTPS sources and/or persist local evidence and corrections, with
+annotations matching their behavior. The default remains the single offline
+tool described below. See [verification and memory](verification-model.md) for
+inputs, outcomes, reuse rules and limitations.
 
 For the personal ChatGPT tunnel configuration:
 
@@ -17,9 +32,15 @@ factttl-mcp --transport streamable-http --enable-verification --verification-db 
 ```
 
 After restarting the server, refresh the plugin's tools in ChatGPT and start a
-new chat with FactTTL selected. Ask it to check a source before recommending it
-and consult earlier corrections. Persistent memory is in the server's SQLite
-file; it does not give the plugin control over unrelated chats.
+new chat with FactTTL selected. For a product list, the model should build
+candidate rows, call `verify_recommendations`, revise contradicted items, verify
+direct replacements, and only then answer. If the result is `RUNNING`, it must
+poll `get_answer_verification`; a job ID is not a verdict.
+
+Persistent memory is in the server's SQLite file. The host and model decide
+whether to call an available tool, so connection and good metadata improve tool
+selection but do not guarantee invocation in every answer or unrelated chat.
+FactTTL cannot modify model weights or provider memory.
 
 ## Default offline mode
 
@@ -74,28 +95,27 @@ per-call overrides and the `STABLE` fallback apply.
 
 ## HTTP and remote clients
 
-For a local HTTP client, start:
+For a local HTTP client with live answer tools, start:
 
 ```powershell
-factttl-mcp --transport streamable-http
+factttl-mcp --transport streamable-http --enable-verification --verification-db .factttl/verification.sqlite3
 ```
 
 It listens on `127.0.0.1:8000` by default, with the MCP endpoint at
-`http://127.0.0.1:8000/mcp`. HTTP transport is useful only when the client can
-reach that endpoint. ChatGPT cannot launch or connect directly to a local
-stdio subprocess. A ChatGPT MCP connection requires a compatible remote HTTPS
-endpoint that ChatGPT can reach, with the authentication and deployment
-requirements of the current ChatGPT plan/workspace. Those availability and
-configuration options can change; check the [current OpenAI developer-mode and
-MCP app guide](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt)
-before setting up a connection.
+`http://127.0.0.1:8000/mcp`. ChatGPT cannot reach this loopback address directly.
+A ChatGPT connection requires a compatible HTTPS endpoint or Secure MCP Tunnel
+plus the permissions of the current account/workspace. Starting the local
+server proves only local readiness; it does not prove that the tunnel is
+authenticated, the plugin is installed, or the active chat has selected it.
+Follow the [personal connection test](chatgpt-local-test.md) and OpenAI's current
+[connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt).
 
 Do not expose the server's unauthenticated HTTP endpoint to the public
 internet. For remote use, deploy behind an authenticated HTTPS MCP gateway or
 use a private, access-controlled tunnel that enforces authentication. Binding
 to another interface with `--host` does not add authentication or TLS.
 
-FactTTL's MCP adapter itself does not call the network, but the HTTP transport
-accepts network requests from clients that can reach its bind address. Review
-the host, firewall, tunnel, authentication, logging, and policy-file access
-before enabling remote access.
+The default freshness tool does not call the network. The answer and live-source
+tools enabled by `--enable-verification` do make bounded public requests and can
+write the SQLite history. Review the host, firewall, tunnel, authentication,
+logging, source requests, and database access before enabling remote use.

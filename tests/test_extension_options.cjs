@@ -53,7 +53,7 @@ test("connected settings identify the browser service rather than claiming MCP h
   assert.equal(fixture.elements.get("connection-label").textContent, "Browser collegato al servizio locale");
   const source = fs.readFileSync(path.join(__dirname, "../integrations/chatgpt-extension/options.html"), "utf8");
   assert.match(source, /data-i18n="transportNote"/);
-  assert.match(source, /collegamento MCP separato/);
+  assert.match(source, /strumento MCP nell'app AI/);
 });
 
 test("enabled external discovery discloses outgoing Bing queries and evidence limits", async () => {

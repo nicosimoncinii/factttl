@@ -167,7 +167,6 @@
 
   let currentChat = null;
   let enabled = false;
-  let autoCorrection = true;
   let epoch = 0;
   let routeVersion = 0;
   let sequence = 0;
@@ -195,17 +194,8 @@
     try { return await extensionAPI.runtime.sendMessage(message); }
     catch { return {ok: false, message: "Estensione aggiornata: ricarica questa pagina."}; }
   }
-  const memory = typeof FactTTLMemory !== "undefined" ? FactTTLMemory.install({getState: () => ({enabled, chatId: currentChat}), send, control, onUserSend: () => send({type: "RESET_CORRECTION_BUDGET", payload: {chatId: currentChat}})}) : null;
-  const correction = typeof FactTTLCorrection !== "undefined" ? FactTTLCorrection.install({getState: () => ({enabled, chatId: currentChat, autoCorrection}), send, memory, control, isStreaming, setMode: async value => {
-    autoCorrection = value;
-    const chat = currentChat;
-    const saved = await send({type: "SET_CORRECTION_MODE", payload: {chatId: chat, enabled: value}});
-    if (currentChat === chat && !saved.ok) {autoCorrection = false; correction?.refresh();}
-  }}) : null;
 
   function updateToggle() {
-    memory?.refresh();
-    correction?.refresh();
     toggle.textContent = enabled ? "● FactTTL attivo" : "○ FactTTL disattivo";
     toggle.setAttribute("aria-checked", String(enabled));
     toggle.disabled = !currentChat;
@@ -217,7 +207,6 @@
     epoch += 1;
     queue = [];
     states.clear();
-    correction?.reset();
     FactTTLItemUI.close();
     document.querySelectorAll(".factttl-result").forEach(node => node.remove());
   }
@@ -243,7 +232,6 @@
     if (currentChat) send({type: "CANCEL_CHAT", payload: {chatId: currentChat}});
     currentChat = next;
     enabled = false;
-    autoCorrection = true;
     reset();
     updateToggle();
     const version = ++routeVersion;
@@ -251,7 +239,6 @@
       const state = await send({type: "GET_CHAT_STATE", payload: {chatId: next}});
       if (version !== routeVersion || next !== currentChat) return;
       enabled = Boolean(state.ok && state.enabled);
-      autoCorrection = state.autoCorrection !== false;
       updateToggle();
       if (enabled) scan();
     }
@@ -314,7 +301,7 @@
         continue;
       }
       state.pending = true;
-      // Preserve search shortcuts in the local assertion/correction view, but
+      // Preserve search shortcuts in the local assertion view, but
       // never ask the public-web bridge to fetch an authenticated host page.
       const publicPayload = serializeMessage(itemSource, {includeHostSearch: false});
       queue.push({node, source: itemSource, state, signature, epoch, chatId: currentChat, payload: {...publicPayload, id: crypto.randomUUID(), chatId: currentChat}});
@@ -323,33 +310,6 @@
     const priorities = new Map(messages.map((node, index) => [node, index]));
     queue.sort((a, b) => (priorities.get(a.node) ?? Infinity) - (priorities.get(b.node) ?? Infinity));
     pump();
-    updateCorrection();
-  }
-
-  function updateCorrection() {
-    if (!correction || !enabled || !currentChat || isStreaming()) return;
-    const all = [...document.querySelectorAll(MESSAGE_SELECTOR)];
-    const roots = all.filter(node => !all.some(other => other !== node && other.contains(node)));
-    const root = roots.at(-1);
-    if (!root) return;
-    const entries = [...states].filter(([node]) => root.contains(node)).map(([node, state]) => ({response: state.response, url: state.url, text: serializeMessage(sourceFor(node)).text}));
-    const targets = itemTargets(root);
-    const settled = targets.length > 0 && targets.every(node => {const state = states.get(node); return state && !state.pending && state.signature === JSON.stringify(serializeMessage(sourceFor(node))) && state.finishedAt > 0;});
-    const payload = serializeMessage(root);
-    const id = root.closest('[data-message-id]')?.getAttribute('data-message-id') || String(roots.length);
-    const identity = `${currentChat}:${id}:${JSON.stringify(payload)}`;
-    root.dataset.factttlCorrectionIdentity = identity;
-    const users = [...document.querySelectorAll('[data-message-author-role="user"], [data-testid="user-message"], .font-user-message, user-query, .user-query-content')];
-    const previous = users.at(-1)?.textContent || "";
-    const previousUser = users.at(-1);
-    const round = previous.includes(FactTTLCorrection.MARKER) ? Number(previous.match(/Passaggio:\s*(\d)\/2/)?.[1] || 2) + 1 : 1;
-    const isCurrent = () => {
-      const candidates = [...document.querySelectorAll(MESSAGE_SELECTOR)];
-      const latest = candidates.filter(node => !candidates.some(other => other !== node && other.contains(node))).at(-1);
-      const currentUser = [...document.querySelectorAll('[data-message-author-role="user"], [data-testid="user-message"], .font-user-message, user-query, .user-query-content')].at(-1);
-      return latest === root && currentUser === previousUser && (currentUser?.textContent || "") === previous && JSON.stringify(serializeMessage(root)) === JSON.stringify(payload);
-    };
-    correction.update({root, identity, entries, settled, round, isCurrent});
   }
 
   async function pump() {
@@ -385,7 +345,6 @@
   }).observe(document.body, {subtree: true, childList: true, characterData: true});
   addEventListener("popstate", () => { syncRoute(); schedule(); });
   extensionAPI.runtime.onMessage.addListener(message => {
-    if (message.type === "CORRECTION_MODE_CHANGED" && message.chatId === currentChat) {autoCorrection = Boolean(message.enabled); correction?.refresh();}
     if (message.type === "PREFERENCES_CHANGED") { reset(); if (enabled) scan(); }
     if (message.type === "CHAT_STATE_CHANGED" && message.chatId === currentChat) {
       enabled = Boolean(message.enabled);

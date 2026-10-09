@@ -15,6 +15,30 @@ from factttl.mcp_server import create_server
 from factttl.verification import VerificationResult
 
 
+def _native_analysis(text: str, links: list[str]) -> dict[str, object]:
+    return {
+        "status": "CONTRADICTED",
+        "checks": [
+            {
+                "assertion_scope": "current unit price",
+                "regional_context": {"country": "IT", "language": "it"},
+                "result": {
+                    "url": links[0],
+                    "kind": "product_price",
+                    "outcome": "CONTRADICTED",
+                    "claim_text": text,
+                    "expected_value": "9.99 EUR",
+                    "observed_value": "12.99 EUR",
+                    "observed_at": datetime.now(UTC).isoformat(),
+                    "evidence": [{"provider": "test_fixture", "value": "12.99"}],
+                },
+            }
+        ],
+        "unchecked_claims": [],
+        "prior_corrections": [],
+    }
+
+
 def test_opt_in_tools_and_permissions(tmp_path: Path) -> None:
     server = create_server(PolicyConfig({}), tmp_path / "checks.sqlite3")
     tools = {tool.name: tool for tool in asyncio.run(server.list_tools())}
@@ -30,6 +54,10 @@ def test_opt_in_tools_and_permissions(tmp_path: Path) -> None:
         "assess_claim_with_live_evidence",
         "recall_content_checks",
         "report_content_correction",
+        "verify_answer",
+        "verify_recommendations",
+        "submit_answer_verification",
+        "get_answer_verification",
     }
     for name in ("verify_content", "assess_claim_with_live_evidence"):
         annotations = tools[name].annotations
@@ -69,6 +97,86 @@ def test_correction_can_be_recalled_by_another_server(tmp_path: Path) -> None:
     assert claims[0]["do_not_reuse_prior_assertion"] is True
     assert claims[0]["usable_as_current_fact"] is False
     assert claims[0]["independently_verified"] is False
+
+
+def test_verify_answer_returns_native_revisions_without_a_chat_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "factttl.mcp_verification.verify_message",
+        lambda text, links, store, preferences, cancellation_event: _native_analysis(
+            text, links
+        ),
+    )
+
+    async def exercise() -> dict[str, object]:
+        server = create_server(PolicyConfig({}), tmp_path / "checks.sqlite3")
+        response = await server.call_tool(
+            "verify_answer",
+            {
+                "text": "ESP32 costa 9.99 EUR https://example.com/esp32",
+                "country": "IT",
+                "language": "it",
+            },
+        )
+        assert isinstance(response, CallToolResult)
+        return cast(dict[str, object], response.structured_content)
+
+    envelope = asyncio.run(exercise())
+    assert envelope["status"] == "COMPLETED"
+    result = cast(dict[str, object], envelope["result"])
+    assert result["interaction_mode"] == "native_mcp_tool_result"
+    assert result["provider_memory_or_weights_modified"] is False
+    revisions = cast(list[dict[str, object]], result["required_revisions"])
+    assert revisions[0]["action"] == "update_price_and_recalculate_total"
+    assert revisions[0]["observed_value"] == "12.99 EUR"
+    assert "prompt" not in result
+
+
+def test_verify_recommendations_preserves_quantity_and_price_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "factttl.mcp_verification.verify_message",
+        lambda text, links, store, preferences, cancellation_event: _native_analysis(
+            text, links
+        ),
+    )
+
+    async def exercise() -> dict[str, object]:
+        server = create_server(PolicyConfig({}), tmp_path / "checks.sqlite3")
+        response = await server.call_tool(
+            "verify_recommendations",
+            {
+                "items": [
+                    {
+                        "name": "ESP32 DevKit",
+                        "url": "https://example.com/esp32",
+                        "quantity": 2,
+                        "expected_unit_price_eur": "9.99",
+                    }
+                ],
+                "country": "IT",
+                "language": "it",
+            },
+        )
+        assert isinstance(response, CallToolResult)
+        return cast(dict[str, object], response.structured_content)
+
+    envelope = asyncio.run(exercise())
+    assert envelope["status"] == "COMPLETED"
+    result = cast(dict[str, object], envelope["result"])
+    requested = cast(list[dict[str, object]], result["requested_items"])
+    assert requested == [
+        {
+            "name": "ESP32 DevKit",
+            "url": "https://example.com/esp32",
+            "quantity": 2,
+            "expected_unit_price_eur": "9.99",
+        }
+    ]
+    assert result["cart_total_verified"] is False
+    assert result["compatibility_verified"] is False
 
 
 def test_live_check_persists_outcome(

@@ -4,15 +4,22 @@
 
 FactTTL is an early-stage project to build a model-agnostic freshness layer for AI answers. It is designed to identify claims whose usefulness can expire, apply configurable time-to-live (TTL) policies, and report when claims should be checked again.
 
-> **Project status: personal testing.** Freshness evaluation, public HTTPS source checks, evidence-backed product/link assessments, source-anchored AI assessments, and persistent correction memory are implemented. General autonomous fact extraction, universal truth verification, account-isolated hosting, and stable SDK guarantees are not implemented.
+> **Project status: personal testing.** Freshness evaluation, public HTTPS source checks, evidence-backed product/link assessments, source-anchored AI assessments, native MCP answer checks, and persistent local correction history are implemented. General truth verification, account-isolated hosting, and stable SDK guarantees are not implemented.
 
-## Live verification and correction memory
+## Native verification tools and local memory
 
 Start the MCP server with `--enable-verification` to enable live checks and a
-local SQLite history. It can compare product availability and prices with
-explicit structured source data, detect broken links, collect news publication
-dates, and remember user-reported corrections. A later FactTTL chat can recall
-those corrections before repeating an earlier assertion.
+local SQLite history. The native `verify_answer` and `verify_recommendations`
+tools return evidence, earlier relevant findings, and required revisions
+directly to the calling model. They do not write a prompt into the user's
+composer, click Send, or create a correction message in the conversation.
+
+The intended cycle is: the model drafts an answer, calls a FactTTL tool, revises
+contradicted or unsupported parts, verifies any replacement links, and only then
+presents the final answer. Product stock, price and discount remain separate
+properties; a reachable link is never treated as proof that an offer is in
+stock or has the stated price. Slow checks may return `RUNNING`; the model must
+poll `get_answer_verification` before using a result.
 
 For general claims, the AI compares a claim with source evidence; FactTTL fetches
 the source and checks that the supplied excerpt occurs in its extracted text.
@@ -20,16 +27,19 @@ That assessment remains fallible and source-relative. An inaccessible source,
 CAPTCHA or expired check never becomes a factual verdict. A source's publication
 date measures age, not truth. See [verification and memory](docs/verification-model.md).
 
-The plugin cannot force every ChatGPT conversation to consult it or rewrite
-ChatGPT's model weights. Select FactTTL in the conversations where you want
-these checks. The store is shared by clients of this personal local server;
-it is not a multi-user service.
+The host and model decide whether to call an available tool. Tool names,
+descriptions and server instructions make the intended workflow explicit, but
+FactTTL cannot force every ChatGPT conversation to consult it, silently rewrite
+an already generated provider message, or change provider model weights. Select
+the FactTTL plugin in the conversations where you want model-visible checks.
+The SQLite store is shared by clients of this personal local server; it is not
+a multi-user service or the provider's permanent memory.
 
-## Automatic buttons in ChatGPT
+## Passive status buttons in the browser
 
 The experimental [Firefox/Chrome/Edge extension](integrations/chatgpt-extension/README.md)
 adds a per-conversation switch and a colored status button next to each distinct
-linked source, without an `@FactTTL` mention. It automatically checks
+linked source. It passively checks
 recognized URL-associated prices, stock and discount assertions against public
 sources. Open a status button to inspect evidence and unchecked parts. Turning
 the switch off removes the buttons and cancels pending checks.
@@ -56,11 +66,12 @@ The local model supports a bounded CPU profile; see
 See [useful verification and measured public-source checks](docs/useful-verification.md)
 for scoped news verdicts, real NASA examples, and current discovery limitations.
 Green applies only to narrowly covered properties; an accessible URL never
-proves a whole answer. The extension does not give the model hidden context or
-disable a separately selected ChatGPT plugin. A correction can be copied to the
-chat explicitly; automatic model-side enforcement requires a supported host
-integration. This extension is not installed in Codex's internal browser or
-ChatGPT's desktop app.
+proves a whole answer. The extension never intercepts a send, edits the composer,
+clicks Send, or gives the model hidden context. Its badges are evidence for the
+person reading the page. Model-side revision uses the separate MCP tools. The
+browser switch controls only the badges and bridge work; it does not enable or
+disable a separately installed plugin. This extension is not installed in
+Codex's internal browser or the ChatGPT desktop app.
 
 ## What is FactTTL?
 
@@ -146,8 +157,9 @@ against evidence. The JSON input format, policy option, output schema, and exit
 behavior are described in the [CLI guide](docs/cli.md). A Python report API is
 also available; see [in-memory reports](docs/reports.md) and the
 [Python API guide](docs/python-api.md). The optional
-[MCP server](docs/mcp.md) exposes the same deterministic evaluation to
-compatible agent clients.
+[MCP server](docs/mcp.md) exposes the same deterministic evaluation and,
+when explicitly enabled, the live answer-verification tools to compatible agent
+clients.
 
 ## Planned architecture
 
@@ -161,7 +173,7 @@ For the implemented core's current data handling and the requirements for future
 - **0.2 — Verification providers:** opt-in public HTTPS checks and persistent evidence/correction history are available for personal testing; broader providers remain future work.
 - **0.3 — CLI:** structured-claim scanning with text and JSON reports is implemented; policy inspection and report comparison remain future work.
 - **0.4 — SDK:** a typed Python embedding API is available; compatibility guarantees remain pre-1.0.
-- **0.5 — Integration layer:** a read-only MCP adapter is available; other agent adapters and managed ChatGPT hosting remain future work.
+- **0.5 — Integration layer:** an MCP adapter with offline freshness and opt-in live verification tools is available; other agent adapters and managed hosting remain future work.
 - **1.0 — Stable freshness engine:** versioned model and policy semantics, documented limitations, and a compatibility commitment.
 
 Future shareable features include a freshness summary/badge and `factttl diff` for changes in status between reports. These are roadmap ideas, not commitments or existing features.
@@ -170,10 +182,11 @@ Future shareable features include a freshness summary/badge and `factttl diff` f
 
 The optional MCP adapter works with compatible local stdio clients and with
 clients that can reach a secured Streamable HTTP endpoint. To connect ChatGPT,
-you must run the HTTP transport somewhere ChatGPT can reach, or use an
-appropriate private MCP tunnel; this repository does not host or deploy that
-endpoint for you. See the [MCP integration guide](docs/mcp.md) and OpenAI's
-[current guide for custom MCP servers](https://developers.openai.com/plugins/build/app-quickstart).
+run the local HTTP server behind an appropriate Secure MCP Tunnel or deploy an
+authenticated HTTPS endpoint. Connection availability still depends on the
+account and workspace. See the [MCP integration guide](docs/mcp.md), the
+[personal connection test](docs/chatgpt-local-test.md), and OpenAI's
+[current plugin connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt).
 Other potential integration points include Claude Code, Codex, Cursor, Gemini
 CLI, and OpenCode. Integrations should call the same model-agnostic core rather
 than own freshness semantics.

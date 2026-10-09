@@ -5,12 +5,17 @@
 The freshness/config/report/CLI modules remain offline. Opt-in MCP verification
 uses `web_verifier` for bounded public HTTPS observations, `verification` for
 validated evidence records, and `verification_store` for durable SQLite history
-and conservative reuse decisions. The optional tools are enabled explicitly
-with `--enable-verification`; the default server stays offline. The local store
-serves one user's connected clients and is not tenant-isolated.
+and conservative reuse decisions. `mcp_verification` coordinates native answer
+and recommendation checks, recalls history before live work, and returns
+structured revisions directly to the calling model. The optional tools are
+enabled explicitly with `--enable-verification`; the default server stays
+offline. The local store serves one user's connected clients and is not
+tenant-isolated.
 
-No automatic extraction or general truth oracle is implemented. General claim
-comparisons come from the calling AI, anchored to a quote fetched from the source.
+No general truth oracle or complete free-form claim extraction is implemented.
+The native answer tools perform bounded extraction for supported URL-associated
+product properties and configured news patterns. Other semantic comparisons
+come from the calling AI, anchored to a quote fetched from the source.
 
 ## Pipeline
 
@@ -41,7 +46,7 @@ Keep extraction and verification behind narrow interfaces. Policy evaluation sho
 | `reports` | Human and machine-readable summaries, counts, unknown states | Unsupported aggregate “truth scores” |
 | `config` | Loading and validating local policy configuration | Secret storage |
 | `cli` | Local user interface around public core operations | Independent domain semantics |
-| `mcp_server` (optional) | Expose freshness and opt-in live checks/correction memory over stdio or Streamable HTTP | Autonomous extraction or unprotected public hosting |
+| `mcp_server` / `mcp_verification` (optional) | Expose freshness, structured answer checks and local correction history over stdio or Streamable HTTP | Composer injection, guaranteed host tool selection, or unprotected public hosting |
 | `plugins` (later) | Discovery and lifecycle for optional adapters if demand justifies it | Arbitrary runtime code execution by default |
 
 Do not create a module until there is a concrete responsibility and use case. The names are proposed package boundaries, not empty scaffolding requirements.
@@ -52,7 +57,13 @@ Do not create a module until there is a concrete responsibility and use case. Th
 
 ## Execution and storage
 
-Freshness evaluation and report construction are process-local operations over supplied claims and policy. They do not need a database or provider. The optional MCP wrapper can expose this operation to a stdio client or a Streamable HTTP endpoint; any remotely reachable endpoint needs deployment-level authentication and transport security. Reports may be written to stdout or a user-selected file. Persistent history should wait until `diff` and repeat-scan use cases establish a data format and retention expectations.
+Freshness evaluation and report construction are process-local operations over
+supplied claims and policy. They do not need a database or provider. The
+optional MCP wrapper can expose this operation to a stdio client or a Streamable
+HTTP endpoint; any remotely reachable endpoint needs deployment-level
+authentication and transport security. Opt-in verification uses a local SQLite
+database for evidence and correction history. Reports may be written to stdout
+or a user-selected file.
 
 ## Failure behavior
 

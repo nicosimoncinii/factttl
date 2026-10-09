@@ -26,6 +26,12 @@ from factttl.freshness import (
     evaluate_freshness,
     resolve_policy,
 )
+from factttl.mcp_verification import (
+    AnswerVerificationEnvelope,
+    AnswerVerificationService,
+    Recommendation,
+    verification_envelope,
+)
 
 
 def _parse_timestamp(value: str, field: str) -> datetime:
@@ -141,7 +147,17 @@ def create_server(
 ) -> MCPServer:
     """Create tools; live network access and persistence require an explicit DB."""
     instructions = (
-        "For FactTTL verification requests, consult recall_content_checks before "
+        "Use verify_answer or verify_recommendations before your final answer "
+        "when giving current news, product links, prices, discounts or stock. "
+        "These are native MCP tools: results are returned to you directly, "
+        "without inserting prompts in the user's composer. If a check returns "
+        "RUNNING, poll get_answer_verification; do not invent a completed result. "
+        "Revise contradicted drafts before presenting them, explain the original "
+        "error and the observed correction, and verify direct replacement links. "
+        "Keep the original budget, merchant, quantities and compatibility "
+        "requirements. A partial check never verifies an entire cart or technical "
+        "compatibility. For FactTTL verification requests, consult "
+        "recall_content_checks before "
         "reusing earlier claims. Check volatile product data immediately before "
         "recommending it. CONTRADICTED means selected evidence conflicts with "
         "the specific assertion, not that every statement on the URL is false. "
@@ -217,6 +233,98 @@ def _register_verification_tools(server: MCPServer, db_path: Path) -> None:
         idempotent_hint=False,
         open_world_hint=True,
     )
+    answer_checks = AnswerVerificationService(store)
+
+    @server.tool(annotations=writes, structured_output=True)
+    async def verify_answer(
+        text: str,
+        links: list[str] | None = None,
+        country: str = "IT",
+        language: str = "it",
+    ) -> AnswerVerificationEnvelope:
+        """Verify a draft before your final answer, returning evidence as a tool result.
+
+        Put each claim/offer and its direct source URL on the SAME line. Checks
+        current product stock, unit price and asserted discounts, plus public news
+        consistency using the configured local engine. Recalls earlier local
+        corrections BEFORE checking and persists observations. It never edits the
+        user's composer or sends chat messages. Missing evidence is not false or
+        out of stock; a search URL is not a merchant offer. Preserve uncertainty,
+        original links and cited evidence when revising. Direct replacement links
+        must be checked again. Maximum 20000 characters, 20 URLs and SIX property
+        checks; split longer carts. Country/language are declared preferences,
+        not GPS or personalized delivery confirmation. Sends public HTTPS requests;
+        topic queries go to Bing only if the operator explicitly configured Bing.
+        Returns COMPLETED/result within 20 seconds or RUNNING/job_id; poll
+        get_answer_verification before treating a pending check as evidence.
+        """
+        return verification_envelope(
+            await answer_checks.verify(
+                text, links or [], {"country": country, "language": language}
+            )
+        )
+
+    @server.tool(annotations=writes, structured_output=True)
+    async def verify_recommendations(
+        items: list[Recommendation], country: str = "IT", language: str = "it"
+    ) -> AnswerVerificationEnvelope:
+        """Check direct offers before recommending products or calculating a cart.
+
+        Each item has name, url, quantity and optional expected_unit_price_eur
+        (decimal string such as '9.99'). Quantity is preserved as metadata. Checks
+        recommended products as in stock and compares asserted CURRENT unit
+        prices. Omit estimated prices rather than asserting them current. Supports
+        up to 10 items but only SIX property checks per call: split into small
+        batches, keeping results for every item. Stock and price are distinct from
+        link accessibility. Search links cannot establish an individual offer.
+        Does not certify compatibility, shipping costs or a complete cart total.
+        Returns COMPLETED/result or RUNNING/job_id for get_answer_verification.
+        Shares verify_answer's network, evidence scope and local-memory behavior.
+        """
+        return verification_envelope(
+            await answer_checks.recommendations(
+                items, {"country": country, "language": language}
+            )
+        )
+
+    @server.tool(annotations=writes, structured_output=True)
+    def submit_answer_verification(
+        text: str,
+        links: list[str] | None = None,
+        country: str = "IT",
+        language: str = "it",
+    ) -> AnswerVerificationEnvelope:
+        """Start verify_answer immediately without waiting for slow CPU inference.
+
+        Inputs, evidence scope, public network requests and local persistence are
+        identical to verify_answer. Returns a job ID, NOT a verification verdict.
+        Call get_answer_verification until COMPLETED before revising your final
+        answer. At most four active jobs, two workers; completed IDs last 15 minutes.
+        """
+        return verification_envelope(
+            answer_checks.submit(
+                text, links or [], {"country": country, "language": language}
+            )
+        )
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True,
+            destructive_hint=False,
+            idempotent_hint=True,
+            open_world_hint=False,
+        ),
+        structured_output=True,
+    )
+    def get_answer_verification(job_id: str) -> AnswerVerificationEnvelope:
+        """Read a native verification job's actual result without further network work.
+
+        RUNNING means no verdict is ready. COMPLETED carries verification,
+        memory_before_check and required_revisions. FAILED/CANCELED mean unverified,
+        not false or out of stock. Use the ID returned by the answer tools. Poll
+        no faster than every two seconds. Results are local and last 15 minutes.
+        """
+        return verification_envelope(answer_checks.get(job_id))
 
     @server.tool(
         annotations=ToolAnnotations(

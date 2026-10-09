@@ -1,4 +1,4 @@
-# Live verification and correction memory
+# Live verification and local correction history
 
 Verification compares a specific assertion with selected source evidence at an
 observed time. `SUPPORTED` means that evidence supports the assertion;
@@ -16,6 +16,10 @@ restarts and chats using the same server.
 
 | Tool | Behavior |
 |---|---|
+| `verify_answer` | Recall relevant history, check a draft, and return structured evidence and required revisions directly to the model. |
+| `verify_recommendations` | Check 1–10 structured product rows while preserving quantities and optional asserted unit prices. |
+| `submit_answer_verification` | Start the answer workflow as a bounded background job. |
+| `get_answer_verification` | Retrieve the actual result of a submitted job; `RUNNING` is never a verdict. |
 | `inspect_live_source` | Read bounded current source text and provenance before selecting evidence. |
 | `verify_content` | Fetch a public HTTPS URL and compare a named property. Persist the observation. |
 | `assess_claim_with_live_evidence` | Fetch a source and validate an excerpt; persist the AI caller's semantic comparison. |
@@ -35,6 +39,16 @@ reference being corrected when a different source provides the new evidence.
 Recall the original assertion and reuse its exact text to attach the assessment
 to that same record.
 
+`verify_answer` accepts a bounded draft and explicit links. Put each assertion
+and its direct source URL on the same line so the association is unambiguous.
+`verify_recommendations` accepts product name, direct offer URL, quantity and an
+optional current unit price. Both tools recall matching history before checking,
+then return `verification`, `memory_before_check`, and `required_revisions` in
+the MCP result. A caller must revise contradicted items, verify replacements,
+and preserve the original budget, merchant, quantities and compatibility
+constraints. The result explicitly does not certify a whole cart or technical
+compatibility.
+
 ## Remembering corrections
 
 1. Before reusing an earlier claim or link, recall by URL or relevant keyword.
@@ -52,9 +66,11 @@ not independently verified. Similar wording is retrieved by keyword/URL;
 there is no automatic semantic deduplication of arbitrary paraphrases.
 
 The registry belongs to this local server, not to ChatGPT's internal memory.
-Other conversations benefit when they select FactTTL and consult the tools.
-The plugin cannot intercept every answer, change model weights, or ensure
-that an unrelated chat automatically calls it.
+Other conversations benefit when they select FactTTL and call the tools. The
+browser extension does not place records in the composer or send correction
+turns. The host and model decide when to call an available MCP tool; FactTTL
+cannot intercept every answer, change model weights, ensure that an unrelated
+chat automatically uses it, or silently modify an already generated response.
 
 ## Limits
 

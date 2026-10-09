@@ -1,13 +1,10 @@
 "use strict";
 const assert = require("node:assert/strict");
 const {test} = require("node:test");
-const {readFileSync} = require("node:fs");
-const {webcrypto} = require("node:crypto");
-const vm = require("node:vm");
 const content = require("../integrations/chatgpt-extension/content.js");
 const {summarize, searchDestination} = require("../integrations/chatgpt-extension/item-ui.js");
 global.FactTTLItemUI = {summarize, searchDestination};
-const {collectCorrections, correctionPrompt} = require("../integrations/chatgpt-extension/correction.js");
+const {collectCorrections} = require("../integrations/chatgpt-extension/correction.js");
 
 const search = "https://chatgpt.com/?hints=search&q=efaso+Pale+del+rotore+gialle+per+elicottero+S107G";
 
@@ -99,7 +96,7 @@ test("host product search and Amazon search are selection links, never stock evi
   }
 });
 
-test("missing service connection still allows local correction of fake product destinations", () => {
+test("missing service connection still identifies fake product destinations without sending a chat prompt", () => {
   const original = "efaso Pale del rotore S107G · Prezzo verificato 5,00 € · Apri il prodotto";
   const findings = collectCorrections([{url: search, text: original, response: {ok: false, error: "Connection refused"}}]);
   assert.equal(findings.length, 1);
@@ -108,49 +105,7 @@ test("missing service connection still allows local correction of fake product d
   assert.equal(findings[0].scope, "link_structure");
   assert.match(findings[0].original, /Prezzo verificato 5,00/);
   assert.doesNotMatch(findings[0].observed, /esaurito|non disponibile/i);
-  const prompt = correctionPrompt(findings);
-  assert.match(prompt, /link diretti/i);
-  assert.match(prompt, /budget, componenti, paese e negozio/);
-  assert.match(prompt, /Non inventare/);
-  assert.ok(prompt.includes(search));
-});
 
-test("offline search finding reaches automatic follow-up rather than stopping at a badge", async () => {
-  class Node {
-    constructor() {this.children = []; this.listeners = {}; this.dataset = {}; this.isConnected = true;}
-    append(...nodes) {this.children.push(...nodes);}
-    replaceChildren(...nodes) {this.children = nodes;}
-    setAttribute() {}
-    addEventListener(type, fn) {this.listeners[type] = fn;}
-    remove() {this.isConnected = false;}
-  }
-  const root = new Node(), control = new Node(), calls = [], prompts = [];
-  root.dataset.factttlCorrectionIdentity = "helicopter-answer";
-  const state = {enabled: true, chatId: "chatgpt:helicopter-test", autoCorrection: true};
-  const sandbox = vm.createContext({
-    document: {hidden: false, createElement: () => new Node()},
-    FactTTLItemUI: {summarize, searchDestination}, crypto: webcrypto, TextEncoder, Uint8Array, URL, Date,
-  });
-  vm.runInContext(readFileSync(require.resolve("../integrations/chatgpt-extension/correction.js"), "utf8"), sandbox);
-  const correction = sandbox.FactTTLCorrection.install({
-    getState: () => state, control, isStreaming: () => false,
-    memory: {isEnabled: () => true, clearCorrectionDraft() {}, hasDraft: () => false,
-      sendCorrection: async (prompt, guard) => {assert.equal(guard(), true); prompts.push(prompt); return {ok: true};}},
-    send: async message => {
-      calls.push(message);
-      if (message.type === "GET_MEMORY_CONTEXT") return {ok: false, error: "Connection refused"};
-      if (message.type === "RESERVE_CORRECTION") return {ok: true, reserved: true, reservation: "owned-local-reservation"};
-      throw new Error(`Unexpected call ${message.type}`);
-    },
-  });
-  const args = {root, identity: "helicopter-answer", settled: true,
-    entries: [{url: search, text: "Prezzo verificato 5,00 €", response: {ok: false, error: "Connection refused"}}]};
-  await correction.update(args);
-  await correction.update(args);
-  assert.equal(prompts.length, 1);
-  assert.match(prompts[0], /link diretti/i);
-  assert.ok(prompts[0].includes(search));
-  assert.deepEqual(calls.map(call => call.type), ["GET_MEMORY_CONTEXT", "RESERVE_CORRECTION"]);
 });
 
 test("unproven stock cannot become a saved or automatically corrected unavailable offer", () => {

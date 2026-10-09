@@ -1,70 +1,55 @@
-# Saved findings in future chats
+# Local findings used by MCP tools
 
-The authenticated browser bridge exposes `POST /context` for an explicitly
-enabled prompt attachment. This operation reads the local SQLite store only:
-it makes no web requests, search requests or model calls. It accepts `query`
-(1–2000 characters), optional `urls` (at most 10), and `limit` (1–8). Matching
-uses canonical URLs and bounded keywords across the latest 500 local claims.
+FactTTL keeps verification observations and user-requested corrections in the
+local SQLite file selected with `--verification-db`. The history belongs to the
+running FactTTL server. It is not ChatGPT, Claude, or another provider's
+permanent memory, and it does not modify model weights.
 
-Returned findings include the narrowly checked property, typed price/stock
-values, observation and expiry times, source-relative scope and reuse flags.
-Expired observations remain history and have `usable_as_current_fact: false`;
-a prior contradiction is not erased by an inconclusive recheck. A historical
-contradiction is not a statement that today's property is still false.
+The native answer tools consult this history before starting a new network
+check. Their structured result includes `memory_before_check`, live verification
+results, and `required_revisions`. This is the only supported path for giving a
+connected model FactTTL memory. The browser extension does not append hidden or
+visible blocks to a prompt, intercept a user's Send action, write into the
+composer, click Send, or post correction follow-ups.
 
-`assertion_supported` refers to the original assertion. A fresh contradictory
-price check can still supply a useful corrected price:
-`observed_value_usable_as_current_fact` identifies a typed value obtained from
-live property evidence while it remains fresh. For example, an old assertion
-of EUR 1 can be unsupported while the observed EUR 10.99 is current. The
-`source_scope` retains `browser_current_offer` for Amazon browser observations;
-this never establishes shipping destination or the checkout total.
+## What is stored
 
-Raw source quotes, HTML and rationales are not attached. News claim text is
-limited to 400 normalized characters and must be treated as untrusted quoted
-data, never an instruction. A finding does not make a whole message true.
+Records include the narrowly checked property, typed price or stock values,
+observation and expiry times, source-relative scope, bounded evidence, and reuse
+flags. Expired observations remain history but have
+`usable_as_current_fact: false`. A previous contradiction remains visible after
+an inconclusive recheck and is not rehabilitated without newer supporting
+evidence for the same assertion.
 
-MCP `recall_content_checks` also returns bounded `prompt_context` when given a
-URL or search query. The bridge does not itself send messages or change model
-weights. Future-chat influence requires the client to attach these records to
-the actual outgoing prompt with an explicit per-chat user control. Merely
-displaying a flag or storing a correction does not give ChatGPT hidden memory.
+`assertion_supported` refers to the original assertion. A contradictory price
+check can still contain a useful observed price while that observation is fresh;
+`observed_value_usable_as_current_fact` distinguishes that value. Browser offer
+observations do not establish shipping destination, seller selection, technical
+compatibility, or checkout total.
 
-The browser extension now performs this attachment when FactTTL and its
-**Memoria attiva** switch are enabled. It waits for a trusted user Send click or
-plain Enter, retrieves relevant records from `/context`, adds a visible quoted
-JSON block to the outgoing draft and resumes that same send action. It never
-adds unsolicited prompts in memory-only mode. The separate **Correzione
-automatica** control allows visible follow-ups for a completed current response:
-typed live offer contradictions, grounded source contradictions and Amazon
-search links lacking a selected offer. Findings retain the original URL and
-observed property. The request tells the host model to acknowledge the error,
-replace unavailable offers, preserve the user's budget and constraints, and
-show old and corrected references. Replacement references are checked again.
-No alternative is declared verified just because the host model generated it.
+Source text and saved claims are untrusted data. They are returned as evidence,
+not instructions. A historical user report is labeled as such and is not an
+independently verified fact.
 
-The editor adapter waits up to 2.4 seconds for the host's enabled send button,
-submits once and waits up to another 2.4 seconds for acknowledgment: a newly
-posted user message containing the correction, or an empty composer with newly
-started generation and no different new user message. A click or a cleared
-composer alone is not proof of delivery. After an attempted submit with no
-acknowledgment, it keeps the reservation and does not retry that answer: the
-host could accept late. The UI reports an unconfirmed send; a prompt remaining
-in the composer has not been proved delivered to the model.
+## How a later conversation benefits
 
-Automatic follow-ups require a visible chat, no active generation, an unchanged
-latest assistant response, and an empty composer. A durable extension ledger
-deduplicates each response across tabs and reloads; a per-request budget allows
-at most two sends until the user next sends a message. Turning off the chat or
-autocorrection cancels preparation. This ledger stores answer hashes and send
-reservations, not message text. The original response is preserved and an
-explicitly attributed FactTTL correction card is appended; a host model response
-arrives as a new conversation turn. This cannot alter an already-generated
-provider message or guarantee the provider obeys a correction request.
+The later conversation must use the same FactTTL server and have its MCP plugin
+available. The model can call `verify_answer`, `verify_recommendations`, or
+`recall_content_checks`; the tool result then carries the relevant local history
+into that model turn. Tool metadata and server instructions tell the model to
+consult history before repeating volatile claims and to revise contradicted
+drafts before answering.
 
-Draft changes, chat navigation and disconnected
-editors cancel the preparation. Disabling the tool removes its own unsent block;
-an edited block requires manual cleanup before it can be sent while disabled.
-This influences the context of that prompt, not the provider's permanent memory
-or model weights. Host editor selectors need maintenance and live browser
-validation; unsupported editors leave the ordinary send behavior unchanged.
+The host and model still decide whether to call an available tool. FactTTL
+cannot inject memory into an unrelated conversation, force tool use in every
+answer, or silently alter a response already produced by the provider. The
+browser badges remain useful visual evidence for the user, but displaying a
+badge alone does not give the model that evidence.
+
+## Direct context endpoint
+
+The authenticated browser bridge retains `POST /context` as a local read API for
+compatible clients. It accepts a bounded query and optional URLs and returns
+matching history without web requests. The current browser extension does not
+use this endpoint to change outgoing messages. Native model integration uses
+the MCP tools documented in [MCP integration](mcp.md).

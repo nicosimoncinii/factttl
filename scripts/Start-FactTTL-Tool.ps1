@@ -364,6 +364,10 @@ if ($hasExistingService -and (-not $launchStateMatches -or $ReplaceSavedApiKey))
     Stop-OwnedService 8000 $factttlMcpPidFile $factttlMcpRuntimePaths 'MCP' -Mcp
 }
 
+# Ask for and DPAPI-protect the key before starting MCP. Cancelling or closing
+# the hidden prompt must not leave a newly started FactTTL listener behind.
+if (-not (Test-TcpPort 18080)) { $null = Get-ControlPlaneApiKey }
+
 & (Join-Path $PSScriptRoot 'Setup-FactTTL-News.ps1') -StartOnly -Model $newsModel -InferenceProfile $newsProfile
 if ($LASTEXITCODE -ne 0) { throw 'Il motore notizie locale non è pronto.' }
 

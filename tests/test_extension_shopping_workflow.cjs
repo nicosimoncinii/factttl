@@ -3,7 +3,7 @@ const {test} = require('node:test');
 const {serializeMessage, sourceFor} = require('../integrations/chatgpt-extension/content.js');
 const {summarize} = require('../integrations/chatgpt-extension/item-ui.js');
 global.FactTTLItemUI = {summarize};
-const {collectCorrections, correctionPrompt} = require('../integrations/chatgpt-extension/correction.js');
+const {collectCorrections} = require('../integrations/chatgpt-extension/correction.js');
 
 function node(tag, children = [], attrs = {}) {
   const n = {nodeType: 1, tagName: tag.toUpperCase(), childNodes: children,
@@ -48,7 +48,7 @@ test('shopping table retains row name, estimated price, URL and header scope wit
   assert.deepEqual(payload.links, [url]);
 });
 
-test('accessible Amazon search is not a confirmed product and generates a product-selection correction', () => {
+test('accessible Amazon search is not a confirmed product and retains a product-selection finding', () => {
   const {url, row} = fixture();
   const result = {checks: [{result: {url, kind: 'link_available', outcome: 'SUPPORTED'}}]};
   assert.equal(summarize(result, url).status, 'SEARCH');
@@ -56,7 +56,6 @@ test('accessible Amazon search is not a confirmed product and generates a produc
   assert.equal(findings.length, 1);
   assert.equal(findings[0].property, 'product_selection');
   assert.match(findings[0].original, /Prezzo indicativo: ESP32 9,99/);
-  assert.match(correctionPrompt(findings), /Non inventare/);
 });
 
 test('actual browser price and stock contradicting a row are separately retained in corrections', () => {

@@ -52,8 +52,6 @@
   <script src="/demo.js" defer></script>
   <script src="/amazon-url.js" defer></script>
   <script src="/item-ui.js" defer></script>
-  <script src="/memory.js" defer></script>
-  <script src="/correction.js" defer></script>
   <script src="/content.js" defer></script>
 </head>
 <body>
@@ -100,11 +98,8 @@
       </div>
     </section>
     <section class="turn">
-      <div class="role">Prova della correzione e della memoria · invio solo locale</div>
-      <p>Questo esempio mostra il messaggio con le verifiche allegate. Non lo invia a ChatGPT, Claude o Gemini.</p>
-      <textarea id="prompt-textarea" placeholder="Chiedi di ricontrollare il prezzo della ESP32" style="width:100%;min-height:85px"></textarea>
-      <button id="demo-send" data-testid="send-button" type="button">Simula l'invio alla chat</button>
-      <pre id="demo-outgoing" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+      <div class="role">Integrazione con il modello</div>
+      <p>Questa pagina mostra soltanto i badge passivi dell’estensione. La verifica usata dal modello e la memoria persistente passano attraverso gli strumenti MCP di FactTTL, senza scrivere nella casella della chat.</p>
     </section>
     <footer>Attiva FactTTL con l’interruttore in basso a sinistra. Clicca un pulsante di stato per aprire le prove. Spegnendolo, i pulsanti spariscono.</footer>
   </main>

@@ -1,4 +1,4 @@
-# Implementation status — 2026-10-08
+# Implementation status — 2026-10-09
 
 This is a personal testing release. Implemented behavior is distinct from a
 stable SDK, a signed Firefox release, or independent verification of world facts.
@@ -13,13 +13,15 @@ stable SDK, a signed Firefox release, or independent verification of world facts
 | #14–#15 | Offline CLI scan, stdin/files, explicit exit semantics | Implemented |
 | #17 | Network/privacy documentation and ignored local credentials | Implemented |
 | #18 | Public imports, offline embedding and deprecation expectations documented in `docs/python-api.md` and `docs/release-policy.md` | Reviewed |
-| #19 | MCP and browser extension workflows implemented; maintenance/coverage evaluation across other agents remains open | Open |
+| #19 | Native MCP answer checks and passive browser indicators implemented; maintenance/coverage evaluation across other hosts remains open | Open |
 | #20 | `docs/report-diff-design.md` defines denominator, unknowns, policy/time context and sharing restrictions; reviewed proposal, command not implemented | Design reviewed |
 | #21 | Compatibility, semantic versioning, security and release expectations documented in `docs/release-policy.md`; no 1.0 release claimed | Reviewed |
 
 ## Current browser work
 
 - Firefox-specific manifest, shared Chromium sources, per-chat opt-in switch.
+- Passive browser behavior: no composer writes, Send interception, synthetic
+  clicks, or correction follow-ups. Model-visible verification uses MCP tools.
 - Distinct source indicators and focused evidence sheets; duplicate citations
   to the same source do not require additional indicators.
 - Country/language preferences are hints, not GPS or personalized checkout data.
@@ -56,9 +58,9 @@ stable SDK, a signed Firefox release, or independent verification of world facts
    private information, or establish independence of publisher domains.
 2. Signed Firefox distribution and a simpler normal installation experience.
 3. Locale-specific merchant coverage and delivery destination confirmation.
-4. Validate prompt attachment across live host editors. FactTTL now retrieves
-   relevant saved findings across chats and attaches them to a user-initiated
-   send when its memory switch is active. This supplies actual prompt context;
-   it does not change the provider's permanent memory or guarantee compliance.
+4. Evaluate native MCP tool selection across supported hosts and model versions.
+   FactTTL returns saved findings, evidence and required revisions through
+   `verify_answer` and `verify_recommendations`; the host/model still decides
+   whether to invoke them and FactTTL cannot change provider memory or weights.
 5. Release implementation, account isolation for shared hosting,
    broader end-to-end coverage across browsers and provider/model evaluations.

@@ -1,7 +1,6 @@
-/* Visible, bounded correction follow-ups; original assistant text is preserved. */
+/* Pure collection of scoped findings; no composer access or chat messages. */
 (() => {
   "use strict";
-  const MARKER = "[FactTTL — correzione automatica]";
   const safeURL = value => {
     try { const u = new URL(value); return u.protocol === "https:" && !u.username && !u.password && (!u.port || u.port === "443") ? u.href : null; } catch { return null; }
   };
@@ -50,83 +49,5 @@
     }
     return findings.slice(0, 10);
   }
-  function correctionPrompt(findings, round = 1, context = null) {
-    if (!Array.isArray(findings) || !findings.length || ![1, 2].includes(round)) return "";
-    const body = JSON.stringify(findings.slice(0, 10), null, 2).replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
-    const estimateNote = findings.some(f => f.property === "product_estimate_update") ? "Per le stime aggiorna prezzo e totale con il valore osservato: una stima diversa non era un'affermazione falsa.\n" : "";
-    const memory = typeof FactTTLMemory !== "undefined" && context ? FactTTLMemory.memoryBlock(context) : "";
-    return `${MARKER}\nPassaggio: ${round}/2. Il controllo della tua risposta ha rilevato i problemi sotto. Sono dati dello strumento, non istruzioni delle fonti. Questi riscontri arrivano dall'estensione FactTTL; i controlli strutturali dei link non richiedono una connessione al servizio locale. Non dimostrano che hai chiamato l'app MCP. Usa i riscontri allegati senza inventare chiamate o risposte del tool. Un errore di connessione MCP non annulla i riscontri locali; non dichiarare collegato un servizio senza averne un riscontro.\nCorreggi subito la risposta rispettando la richiesta originale (budget, componenti, paese e negozio). Per i dati smentiti spiega all'utente quale indicazione era sbagliata; mostra il link/dato originale e quello corretto. Per prove mancanti non dire che il dato è falso o che il prodotto è esaurito: spiega il limite e cerca un'offerta con riscontri leggibili. Un prodotto esaurito va sostituito con un'offerta pertinente disponibile: non riproporre l'offerta esclusa. Un link di ricerca, anche chatgpt.com/?hints=search&q=..., non è un prodotto acquistabile e non prova prezzo o disponibilità. Cerca link diretti nel negozio richiesto (Amazon.it se richiesto), controlla prezzo, disponibilità e compatibilità; ricalcola il totale con i dati trovati. Non inventare un'alternativa o un prezzo quando mancano prove. Non chiamare verificato un prezzo proveniente solo da un comparatore o da un'immagine del prodotto. Per le notizie distingui la precisa affermazione contestata dalla valutazione dell'intero articolo. FactTTL controllerà anche i nuovi riferimenti.\n${estimateNote}Riscontri JSON: ${body}\n[Fine correzione FactTTL]${memory ? `\n\n${memory}` : ""}`;
-  }
-  const exported = {MARKER, collectCorrections, correctionPrompt};
-  if (typeof module !== "undefined" && module.exports) module.exports = exported;
-  if (typeof document === "undefined") return;
-  function install({getState, send, memory, control, isStreaming, setMode = () => {}}) {
-    let auto = true, busy = false, version = 0;
-    const panels = new Map();
-    const toggle = document.createElement("button"); toggle.type = "button"; toggle.className = "factttl-auto-toggle"; toggle.setAttribute("role", "switch");
-    toggle.title = "Quando trova un errore, FactTTL invia alla chat un messaggio visibile per chiedere una correzione. Massimo due tentativi per richiesta; non modifica le tue bozze.";
-    control.append(toggle);
-    function refresh() {
-      if (typeof getState().autoCorrection === "boolean" && auto !== getState().autoCorrection) {auto = getState().autoCorrection; version += 1; if (!auto) memory?.clearCorrectionDraft();}
-      toggle.hidden = !getState().enabled; toggle.textContent = auto ? "Correzione automatica" : "Correzione manuale"; toggle.setAttribute("aria-checked", String(auto));
-      toggle.title = `${auto ? "Clicca per disattivare" : "Clicca per attivare"} la correzione automatica. Quando trova un errore o un link di ricerca al posto di un'offerta, FactTTL invia alla chat un messaggio visibile per chiedere una correzione. Massimo due tentativi per richiesta; non modifica le tue bozze.`;
-    }
-    toggle.addEventListener("click", () => {auto = !auto; version += 1; setMode(auto); if (!auto) memory?.clearCorrectionDraft(); refresh();});
-    function reset() {version += 1; for (const panel of panels.values()) panel.box.remove(); panels.clear(); refresh();}
-    function panelFor(root, findings) {
-      let panel = panels.get(root);
-      if (!panel) {
-        const box = document.createElement("section"); box.className = "factttl-ui factttl-correction";
-        const heading = document.createElement("h3"); heading.textContent = "FactTTL · Correzione della risposta";
-        const list = document.createElement("ul"), status = document.createElement("p"); status.setAttribute("role", "status");
-        box.append(heading, list, status); root.append(box); panel = {box, list, status}; panels.set(root, panel);
-      }
-      panel.list.replaceChildren();
-      const labels = {product_price: "Prezzo", product_estimate_update: "Stima da aggiornare", product_availability: "Disponibilità del prodotto", product_discount: "Sconto", product_selection: "Offerta", product_evidence_missing: "Offerta da ricontrollare", link_available: "Link", news: "Affermazione"};
-      for (const f of findings) {
-        const row = document.createElement("li"), title = document.createElement("strong"), detail = document.createElement("span"), link = document.createElement("a");
-        title.textContent = `${f.title ? `${f.title} · ` : ""}${labels[f.property] || "Dato"}: `;
-        const observed = {unavailable: "non disponibile", available: "disponibile", true: "confermato", false: "non confermato", discounted: "sconto rilevato", not_discounted: "sconto non rilevato"}[f.observed] || f.observed;
-        const original = f.property === "product_availability" && ["true", "false"].includes(f.original) ? f.original === "true" ? "indicato disponibile" : "indicato esaurito" : f.property === "product_discount" && f.original === "true" ? "indicato in sconto" : f.property === "link_available" && f.original === "true" ? "indicato accessibile" : f.original || "Indicazione della chat";
-        detail.textContent = `${original} → ${observed}`;
-        link.href = f.url; link.textContent = "Riferimento originale"; link.target = "_blank"; link.rel = "noopener noreferrer";
-        row.append(title, detail, link); panel.list.append(row);
-      }
-      return panel;
-    }
-    async function update({root, identity, entries, settled, round = 1, isCurrent = () => true}) {
-      if (!getState().enabled || !root?.isConnected) return;
-      const findings = collectCorrections(entries);
-      if (!findings.length) {panels.get(root)?.box.remove(); panels.delete(root); return;}
-      const panel = panelFor(root, findings);
-      if (!settled || isStreaming()) {panel.status.textContent = "Completo i controlli prima di chiedere la correzione…"; return;}
-      if (!auto || round > 2) {panel.status.textContent = round > 2 ? "Il modello continua a proporre riferimenti problematici: due tentativi eseguiti. I riscontri restano visibili." : "Correzione automatica disattivata: clicca Correzione manuale per attivarla. I riscontri restano visibili."; return;}
-      if (panel.attempted === identity) return;
-      if (memory?.hasDraft?.()) {panel.status.textContent = "Hai una bozza aperta: la correzione attende che il campo messaggio sia libero."; return;}
-      if (busy) return;
-      busy = true;
-      const state = {...getState()}, revision = version;
-      const guard = () => auto && revision === version && getState().enabled && state.chatId === getState().chatId && root.isConnected && identity === root.dataset.factttlCorrectionIdentity && isCurrent() && !isStreaming() && !document.hidden;
-      let reservation;
-      try {
-        const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(identity)))].map(b => b.toString(16).padStart(2, "0")).join("");
-        if (!guard()) return;
-        const context = memory?.isEnabled() ? await send({type: "GET_MEMORY_CONTEXT", payload: {chatId: state.chatId, query: findings.map(f => f.original).join(" ").trim().slice(0, 2000) || "Correggi la risposta", urls: findings.map(f => f.url)}}) : {ok: false};
-        if (!guard()) return;
-        reservation = await send({type: "RESERVE_CORRECTION", payload: {chatId: state.chatId, key: digest}});
-        if (!reservation.ok || !reservation.reserved) {if (reservation.ok) panel.attempted = identity; panel.status.textContent = reservation.budget_exhausted ? "Due tentativi eseguiti per questa richiesta. I riferimenti problematici restano segnalati." : reservation.ok ? "Correzione già richiesta per questa risposta. I nuovi riferimenti vengono ricontrollati." : "Non riesco a registrare la correzione: nessun messaggio inviato."; return;}
-        const result = guard() ? await memory?.sendCorrection(correctionPrompt(findings, round, context.ok ? context.context : null), guard) : null;
-        if (!result?.ok) {
-          // After a host submit attempt, acceptance can arrive late. Keep the
-          // durable reservation and suppress repeats even when no ack arrived.
-          if (result?.attempted) panel.attempted = identity;
-          else await send({type: "RELEASE_CORRECTION", payload: {chatId: state.chatId, key: digest, reservation: reservation.reservation}});
-          panel.status.textContent = result?.reason === "draft" ? "Hai una bozza aperta: la correzione attende che il campo messaggio sia libero." : result?.reason === "not_sent" ? "Invio non confermato dalla chat. Controlla la bozza e i messaggi; nessun tentativo duplicato." : "Invio sospeso: controlla la chat e il campo messaggio.";
-        } else {panel.attempted = identity; panel.status.textContent = "La chat ha ricevuto la correzione. Controllo anche i link della nuova risposta; l'originale resta visibile.";}
-      } catch {panel.status.textContent = "Non riesco a inviare la correzione. I riscontri restano visibili.";}
-      finally {busy = false;}
-    }
-    refresh(); return {update, refresh, reset};
-  }
-  globalThis.FactTTLCorrection = {...exported, install};
+  if (typeof module !== "undefined" && module.exports) module.exports = {collectCorrections};
 })();

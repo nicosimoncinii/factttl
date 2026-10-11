@@ -60,7 +60,7 @@ overriding any previously saved Bing choice; restart an active bridge to apply i
 Turning off FactTTL in a chat removes indicators and cancels queued work;
 requests already in progress may have reached their destination.
 
-## Browser product offers and prompt memory
+## Browser product offers and MCP memory
 
 For an Amazon product link in an enabled chat, the extension can open an
 inactive product tab, read the rendered primary offer and close that tab.
@@ -72,28 +72,24 @@ purchase anything, select a different seller or bypass CAPTCHA. Amazon host
 permissions are limited to the six supported marketplaces. Public backend
 fetching remains a fallback when the browser cannot read the offer.
 
-With the separate memory switch enabled, an explicit user Send or plain Enter
-looks up relevant stored checks locally. The extension adds a visible, quoted
-FactTTL block to that same outgoing message. The selected chat provider thus
-receives the relevant assertion, observed value, source URL, status and
-expiry along with the user's message. The lookup itself contacts only the
-local bridge. This memory-only path resumes the user's send action.
+The extension is passive with respect to the chat editor. It does not inspect a
+user's Send action, insert saved findings into a draft, submit a follow-up, or
+otherwise use the conversation as a transport. The per-chat switch controls
+only visual badges and browser-side verification work. Badge results can be
+written to the same local verification store, but displaying them does not
+give them to the model.
 
-The separate **Correzione automatica** switch authorizes visible correction
-follow-ups after a completed response. The selected provider receives original
-URLs/assertions, typed observed stock/price/discount values and, for grounded
-news contradictions, up to two short quoted source passages per finding.
-The extension asks the model to acknowledge the incorrect indication and
-provide replacements respecting the original request. The choice is saved per
-chat. A local hash ledger avoids duplicate sends; at most two follow-ups are
-attempted for each user request. No full chat transcript, source HTML, cookies,
-credentials or API keys are added to that follow-up. The original answer is
-preserved and a FactTTL correction card is appended below it.
+When a compatible host calls FactTTL through MCP, the native answer tools
+receive the draft text and explicit links as structured arguments. The server
+queries relevant SQLite history before checking live sources and returns that
+history, evidence, and required revisions as a tool result. The connected host
+therefore receives only the arguments it supplied and the returned records; no
+browser cookies, full source HTML, credentials, API keys, or private provider
+conversation API are used by FactTTL. Source excerpts remain untrusted data.
 
-Turning memory or FactTTL off removes an unsent block owned by
-FactTTL; if that block was edited and cannot be removed safely, sending is
-blocked with an explanation. The extension does not alter the provider's
-model weights or permanent memory. See [prompt memory](prompt-memory.md).
+This local memory does not alter provider model weights or permanent provider
+memory. Another chat benefits only if it uses the same server and the host/model
+calls the relevant tool. See [local findings used by MCP tools](prompt-memory.md).
 
 ## Current behavior
 

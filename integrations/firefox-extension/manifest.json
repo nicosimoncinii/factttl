@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FactTTL",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Verifiche locali accanto ai riferimenti di ChatGPT, Claude e Gemini, attivabili per chat.",
   "browser_specific_settings": {
     "gecko": {
@@ -50,8 +50,6 @@
       "js": [
         "amazon-url.js",
         "item-ui.js",
-        "memory.js",
-        "correction.js",
         "content.js"
       ],
       "css": [

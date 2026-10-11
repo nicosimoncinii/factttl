@@ -1,117 +1,113 @@
 # Prova FactTTL in ChatGPT tramite Secure MCP Tunnel
 
-Questa guida descrive una prova locale; non implica che il tunnel o l'app siano già configurati. ChatGPT non avvia direttamente un server MCP stdio locale. Secure MCP Tunnel fa da ponte senza rendere pubblico il server.
+Questa guida collega i veri strumenti MCP di FactTTL a ChatGPT. I risultati
+arrivano al modello come tool result strutturati: l'estensione non scrive prompt
+nella barra, non intercetta Invio e non pubblica messaggi di correzione.
+
+L'avvio locale, il tunnel e la selezione del plugin sono tre stati distinti. Un
+server pronto su `127.0.0.1` non dimostra che il tunnel sia autenticato o che la
+chat corrente possa chiamare gli strumenti.
 
 ## Prerequisiti
 
-- ChatGPT web con accesso a server MCP personalizzati. Verifica la disponibilità effettiva dalla sezione Plugin e i permessi del tuo account/workspace.
-- Un tunnel creato in OpenAI Platform, associato al contesto ChatGPT personale corretto, e i permessi tunnel richiesti. Il client locale necessita di una runtime API key e accesso HTTPS in uscita a `api.openai.com:443`. Non salvare chiavi in questo repository, nei file di policy o nei prompt.
-- FactTTL installato con l'extra MCP e `tunnel-client` installato secondo la guida OpenAI. Il client tunnel deve poter avviare FactTTL in stdio oppure raggiungere il suo endpoint HTTP locale.
+- ChatGPT con accesso ai plugin/server MCP personalizzati nel proprio account o
+  workspace.
+- Un tunnel personale associato al contesto ChatGPT corretto, il relativo
+  `tunnel_id` e una runtime API key con i permessi richiesti.
+- FactTTL installato con l'extra MCP e la runtime `tunnel-client` ufficiale.
+- Accesso HTTPS in uscita a `api.openai.com:443` e alle fonti pubbliche da
+  verificare. Se è abilitata la discovery Bing, si applica anche la disclosure
+  in [privacy e rete](privacy-and-network.md).
 
-Consulta la guida ufficiale [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) per installazione, creazione del tunnel, permessi e configurazione del client. Le istruzioni e le schermate OpenAI possono cambiare.
+Non salvare API key nel repository, nei prompt o nei file di policy. Consulta la
+guida ufficiale [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
+per creare il tunnel e la guida [Connect and test your plugin](https://developers.openai.com/plugins/deploy/connect-chatgpt)
+per collegarlo a ChatGPT. Disponibilità, nomi delle schermate e permessi possono
+variare per account e workspace.
 
-Procedi se la funzione MCP è effettivamente abilitata nel tuo account.
-La guida OpenAI descrive disponibilità e permessi per piano e workspace,
-che possono variare.
+## Avvio locale
 
-Per una prova breve, una runtime API key con scadenza di un giorno è sufficiente.
-Il server FactTTL in modalità stdio non autentica autonomamente le chiamate:
-è avviato come processo figlio dal tunnel client e non apre una porta di rete.
-L'accesso remoto dipende comunque dalle associazioni e dai permessi del tunnel e
-dell'app/workspace ChatGPT. Se usi HTTP invece di stdio, mantieni il server
-vincolato a `127.0.0.1` e non esporlo direttamente in rete.
+Il launcher Windows del progetto è `scripts/Start-FactTTL-Tool.ps1`. Richiede il
+proprio tunnel ID e la propria runtime API key; non include credenziali condivise
+e non può attestare da solo che l'account ChatGPT abbia completato la connessione.
+Usa `Get-Help` sullo script per i parametri della versione presente nel checkout.
 
-## Prova
-
-### Configurazione HTTP verificata il 6 ottobre 2026
-
-La prova su un account personale è riuscita con FactTTL installato in ChatGPT
-e una chiamata reale al tool tramite tunnel privato. Il server e il client devono
-rimanere in esecuzione sul PC. La chiave temporanea della prova scade dopo un
-giorno; dopo la scadenza serve una nuova chiave runtime con Tunnels Read + Use.
-
-Il server locale usa:
+Per avviare manualmente il server con i tool di verifica:
 
 ```powershell
-.\.venv\Scripts\factttl-mcp.exe --transport streamable-http --host 127.0.0.1 --port 8000
+.\.venv\Scripts\factttl-mcp.exe --transport streamable-http --host 127.0.0.1 --port 8000 --enable-verification --verification-db .factttl/verification.sqlite3
 ```
 
-Il runtime ufficiale v0.0.15 usa la chiave già presente nella variabile
-`CONTROL_PLANE_API_KEY` e questi argomenti (sostituisci l'ID del tuo tunnel):
+L'endpoint locale è `http://127.0.0.1:8000/mcp`. Mantienilo su loopback. La
+runtime tunnel v0.0.15 può inoltrarlo con una chiave già fornita tramite
+`CONTROL_PLANE_API_KEY`:
 
 ```powershell
-tunnel-client-runtime.exe run --control-plane.tunnel-id <tunnel_id> --mcp.server-url url=http://127.0.0.1:8000/mcp --health.listen-addr 127.0.0.1:18080
+tunnel-client-runtime.exe run --control-plane.tunnel-id <tunnel_id> --control-plane.api-key env:CONTROL_PLANE_API_KEY --mcp.server-url url=http://127.0.0.1:8000/mcp --health.listen-addr 127.0.0.1:18080
 ```
 
-`http://127.0.0.1:18080/readyz` deve rispondere `200`. In ChatGPT la connessione
-usa **Tunnel** e **Nessuna autenticazione**, con accesso limitato dalle
-associazioni del tunnel. Per riprovare, apri FactTTL nei Plugin e scegli
-**Prova in chat**. Non inserire la chiave API nella chat.
+Verifica i flag con `--help` se usi una runtime diversa. Non esporre direttamente
+la porta 8000 su Internet. Un `200` su `http://127.0.0.1:18080/readyz` conferma
+la readiness del client tunnel, non l'installazione o selezione del plugin nella
+chat.
 
-### Procedura generale
+## Collegamento in ChatGPT
 
-1. Nel checkout FactTTL, verifica che l'entrypoint esista:
+1. In ChatGPT apri Plugins, aggiungi un server MCP personalizzato e scegli il
+   tunnel associato al tuo account.
+2. Completa la configurazione richiesta e crea/installa il plugin FactTTL.
+3. Aggiorna gli strumenti dopo ogni modifica a nomi, descrizioni o schemi.
+4. Avvia una nuova Work chat e seleziona FactTTL. A seconda dell'interfaccia, la
+   selezione iniziale può avvenire dal menu Plugin o con `@FactTTL`. Questo serve
+   ad abilitare lo strumento nella chat; non inserisce una richiesta di
+   correzione e non va ripetuto per ogni risultato. La metadata guida poi la
+   scelta del modello.
 
-   ```powershell
-   .\.venv\Scripts\factttl-mcp.exe --help
-   ```
+Il browser bridge su `127.0.0.1:8765` è un servizio diverso. Serve ai badge
+passivi dell'estensione e il suo stato “collegato” non prova la connessione MCP.
+La porta 8000 serve il protocollo MCP; la porta 18080 espone solo la health della
+runtime tunnel.
 
-2. Configura un target MCP stdio che avvii `factttl-mcp` (usa il percorso assoluto dell'entrypoint nel checkout; aggiungi `--policy <percorso-assoluto>` solo se vuoi provare una policy locale). Con la ZIP runtime, passa il target agli argomenti/env del comando `run`; la gestione di profili e la diagnostica del client completo non fanno parte del runtime ridotto. Segui la sintassi della versione installata di `tunnel-client`; non copiare credenziali nella configurazione del repository.
+## Prova end-to-end del comportamento richiesto
 
-3. Avvia il client tunnel. Il runtime ridotto espone solo `run`, `--help` e `--version`; non supporta i comandi diagnostici del client completo come `doctor`. Verifica la connessione dagli indicatori health/readiness disponibili nella versione installata e dallo stato del tunnel in OpenAI Platform/ChatGPT. Se usi il client completo, puoi seguire la diagnostica `tunnel-client doctor --profile <profilo> --explain` documentata per quel client.
+Prima controlla il trasporto con `evaluate_fact_freshness` usando timestamp
+espliciti. Poi prova la funzione che conta davvero:
 
-4. In ChatGPT web, apri la sezione Plugins/Apps, scegli **+ → Add custom MCP server**, seleziona **Tunnel**, scegli il tunnel associato al tuo account, completa l'autenticazione richiesta e crea l'app/plugin. I nomi e la posizione delle voci possono variare in base al piano e al rollout. Se il tunnel non compare, controlla l'associazione al contesto ChatGPT e i permessi `Tunnels Use`.
+> Prepara una bozza di due prodotti Amazon Italia con link diretti. Prima della
+> risposta finale usa FactTTL `verify_recommendations` per controllare stock e
+> prezzi. Se il risultato è RUNNING, usa `get_answer_verification`. Sostituisci
+> gli elementi contraddetti e verifica nuovamente i link sostitutivi.
 
-5. In una nuova chat, seleziona l'app e chiedi esplicitamente di chiamare `evaluate_fact_freshness` con questi argomenti:
+Una prova riuscita deve mostrare nella traccia strumenti una vera chiamata MCP e
+un risultato `COMPLETED`. Nel risultato cerca:
 
-   ```json
-   {
-     "evaluation_time": "2026-10-06T12:00:00Z",
-     "last_checked_at": "2026-10-06T10:00:00Z",
-     "ttl_seconds": 3600
-   }
-   ```
+- `interaction_mode: native_mcp_tool_result`;
+- `memory_before_check`, anche se vuoto;
+- verifiche separate per disponibilità, prezzo e sconto;
+- `required_revisions` per elementi contraddetti o inconcludenti;
+- `provider_memory_or_weights_modified: false`.
 
-   Il risultato atteso è `STALE`, con `review_due_at` uguale a `2026-10-06T11:00:00.000000Z`. Questa verifica dimostra il trasporto end-to-end e la valutazione deterministica; non verifica la verità di un'affermazione.
+Un link accessibile non basta. `RUNNING`, `FAILED`, `ERROR` o `INCONCLUSIVE` non
+provano disponibilità né indisponibilità. Una pagina di ricerca Amazon non è
+un'offerta diretta. La verifica non certifica automaticamente compatibilità,
+spedizione, venditore selezionato o totale del carrello.
 
-## Riavvio dopo modifiche
+## Limite del controllo automatico
 
-### Distinguere app MCP ed estensione
+Il server fornisce istruzioni e descrizioni dettagliate per indurre il modello a
+verificare bozze con contenuti volatili. Il client scopre i tool e il modello
+sceglie quando chiamarli. Il collegamento non garantisce che ogni modello o ogni
+chat li invochi in modo automatico, e FactTTL non può modificare in silenzio un
+messaggio già generato. Per collaudare la selezione usa richieste dirette e
+indirette e registra tool, argomenti, risultato ed errori, come raccomandato dalla
+[guida ufficiale OpenAI](https://developers.openai.com/plugins/deploy/connect-chatgpt).
 
-Il servizio avviato da `scripts/Start-FactTTL-Browser.ps1` ascolta sulla porta
-`8765` ed è usato dall'estensione. Questo script non avvia il server MCP né
-il tunnel. Uno stato collegato nelle opzioni del browser riguarda quel servizio,
-non l'app MCP selezionabile in ChatGPT. Per il percorso HTTP della prova sopra,
-servono anche il server MCP su `8000` e il client tunnel con readiness su `18080`.
-Un controllo fallito o un errore di connessione non indica prodotto esaurito.
-La scadenza della chiave runtime va verificata separatamente; non si può dedurre
-da una risposta del modello o dallo stato del servizio dell'estensione.
+## Dopo una modifica
 
-L'estensione può trasmettere al modello riscontri tramite memoria e richieste
-visibili di correzione senza usare l'app MCP. **Correzione manuale** disattiva
-questi invii automatici anche se **Memoria attiva** è accesa. Per la modalità
-automatica, seleziona **Correzione automatica** nella chat attivata.
-
-### Versione con verifica e memoria
-
-La prova personale del 6 ottobre è stata aggiornata per usare
-`--enable-verification --verification-db .factttl/verification.sqlite3`.
-La pagina di gestione dell'app offre **Aggiorna strumenti**: usalo dopo aver
-aggiunto strumenti e avvia una nuova chat con FactTTL selezionato.
-
-Esempio pratico: «Prima di consigliarmi questo link, consulta i controlli precedenti
-e verifica adesso disponibilità e prezzo. Se non riesci a verificarli, dillo e
-non presentare il prodotto come disponibile o scontato».
-
-Per controllare la memoria, verifica un URL in una chat e in un'altra chiedi
-«Usa FactTTL per recuperare i controlli precedenti di questo URL». Una smentita
-resterà registrata anche se il successivo controllo fallisce. Il database è
-locale, condiviso tra le chat che selezionano questo server; il plugin non può
-obbligare una chat che non lo usa a consultare quel registro.
-
-- Se cambi codice, dipendenze o policy, arresta e riavvia il server MCP locale tramite il processo che lo gestisce (normalmente `tunnel-client`), quindi riavvia il client tunnel se necessario.
-- Ripeti il controllo di readiness/diagnostica prima di provare da ChatGPT.
-- Se cambia lo schema o la descrizione degli strumenti, aggiorna/scansiona gli strumenti dell'app dalla sua pagina di gestione; alcune viste ChatGPT mantengono una copia delle definizioni finché non vengono aggiornate.
-- Ripeti la chiamata di prova con gli stessi timestamp e confronta stato e scadenza. Non condividere log o configurazioni prima di aver rimosso token e altri dati sensibili.
-
-Riferimenti ufficiali: [aggiungere un server MCP personalizzato a ChatGPT](https://developers.openai.com/api/docs/guides/custom-mcp-server) e [disponibilità e developer mode MCP](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt).
+- Riavvia server e client tunnel.
+- Controlla readiness locale e stato del tunnel nell'account.
+- Aggiorna gli strumenti del plugin e apri una nuova chat.
+- Verifica una chiamata reale; non dedurre la connessione da un badge del browser
+  o da una frase prodotta dal modello.
+- Non condividere log o configurazioni prima di rimuovere token, tunnel ID e dati
+  sensibili.

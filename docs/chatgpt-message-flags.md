@@ -1,9 +1,9 @@
-# Automatic status buttons in ChatGPT (personal test)
+# Passive status buttons in ChatGPT (personal test)
 
 This browser extension adds a switch for each conversation and a status button
 next to each external HTTPS link and below uncovered paragraphs in completed
 assistant responses. It supports desktop Firefox, Chrome and Edge;
-an MCP plugin alone cannot add this automatic behavior to every native message.
+an MCP plugin alone cannot add badges to every native message.
 The extension is not installed inside Codex's internal browser or the ChatGPT
 desktop application.
 
@@ -21,7 +21,7 @@ desktop application.
 - Switching chats never moves a previous answer's result onto a different answer.
 - Checks are refreshed after five minutes while the chat is visible and enabled.
 
-## What is automatic today
+## What the browser checks automatically
 
 The scanner recognizes explicitly URL-associated prices in EUR, product stock,
 discount assertions and link accessibility. Amazon ASIN links also request stock
@@ -53,22 +53,19 @@ assertions without a URL; domain diversity does not establish independence.
 
 The local verifier stores evidence and prior corrections across chats. Prior
 corrections prevent an unqualified green status. The extension does not read
-ChatGPT's private conversation APIs, change model weights, or transmit hidden
-instructions to the model. With **Memoria attiva**, it appends relevant local
-findings as a visible quoted block to a message the user chooses to send,
-including expiry and source scope.
-The memory control only attaches history to a user-selected send. A separate
-**Correzione automatica** control can send a visible correction follow-up after
-the latest answer is complete, with an empty composer and the chat visible.
-**Correzione manuale** means those automatic sends are disabled. The follow-up
-asks for original and corrected references and rechecks replacements, with at
-most two sends per human request. It preserves the original assistant text and
-does not guarantee the provider will obey. The evidence distinguishes extension
-findings from an actual MCP tool call; missing evidence or connection errors
-must not be described as an out-of-stock product.
-Disabling the switch removes its own unsent block. See [prompt memory](prompt-memory.md).
-A separately selected FactTTL plugin
-has its own tool availability and is not disabled by this browser switch.
+ChatGPT's private conversation APIs, change model weights, or transmit prompts
+to the model. It never intercepts a user send, modifies the composer, clicks
+Send, or posts correction follow-ups. Its result is a visual explanation for
+the person reading the page.
+
+For the model to receive evidence and revise a draft, connect and select the
+separate FactTTL MCP plugin. Native tools return structured evidence directly
+to the model and can recall the same local SQLite history. The host and model
+decide whether to call them; the browser switch cannot force tool selection.
+See [local findings used by MCP tools](prompt-memory.md).
+
+A separately selected FactTTL plugin has its own tool availability and is not
+disabled by the browser switch.
 The settings connection status describes only the browser extension and its
 local bridge (`8765`). It does not assert that an optional ChatGPT MCP app or
 tunnel is connected; those are separate processes and need separate readiness

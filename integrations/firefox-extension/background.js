@@ -77,9 +77,6 @@ const active = new Map();
 const epochs = new Map();
 const chats = new Map();
 const knownTabs = new Map();
-const correctionLedger = new Map();
-const correctionBudget = new Map();
-const correctionModes = new Map();
 let persistQueue = Promise.resolve();
 
 const initialized = (async () => {
@@ -92,6 +89,9 @@ const initialized = (async () => {
     } catch { /* Older Firefox uses extension-origin IndexedDB for secrets. */ }
   }
   if (!privateLocalStorage) await extensionAPI.storage.local.remove("bridgeToken");
+  // Remove state created by versions that injected correction prompts into the
+  // host composer. Version 0.4 uses model-visible MCP tools instead.
+  await extensionAPI.storage.local.remove("factttlCorrections");
   const stored = await extensionAPI.storage.local.get("factttlChats");
   if (stored.factttlChats && typeof stored.factttlChats === "object") {
     for (const [id, enabled] of Object.entries(stored.factttlChats).slice(-1000)) {
@@ -99,16 +99,6 @@ const initialized = (async () => {
     }
   }
   const storedPreferences = await extensionAPI.storage.local.get("factttlPreferences");
-  const corrections = await extensionAPI.storage.local.get("factttlCorrections");
-  for (const [key, value] of Object.entries(corrections.factttlCorrections?.modes || {}).slice(-1000)) {
-    if (validId(key) && typeof value === "boolean") correctionModes.set(key, value);
-  }
-  for (const [key, value] of Object.entries(corrections.factttlCorrections?.ledger || {}).slice(-200)) {
-    if (typeof value === "string") correctionLedger.set(key, value);
-  }
-  for (const [key, value] of Object.entries(corrections.factttlCorrections?.budget || {}).slice(-1000)) {
-    if (validId(key) && Number.isInteger(value) && value >= 0 && value <= 2) correctionBudget.set(key, value);
-  }
   try { preferences = validatePreferences(storedPreferences.factttlPreferences); }
   catch { /* Browser locale is an editable hint, never geolocation evidence. */ }
 })();
@@ -380,7 +370,7 @@ async function handle(message, sender) {
         }
       }
     }
-    return {ok: true, chatId: payload.chatId, enabled: chats.get(payload.chatId) === true, autoCorrection: correctionModes.get(payload.chatId) !== false};
+    return {ok: true, chatId: payload.chatId, enabled: chats.get(payload.chatId) === true};
   }
   if (message.type === "CANCEL_CHAT") {
     if (!isChat || !validId(payload.chatId)) return fail("INVALID_PAYLOAD", "Chat non valida.");
@@ -388,46 +378,15 @@ async function handle(message, sender) {
     return {ok: true, chatId: payload.chatId};
   }
 
-  if (["RESERVE_CORRECTION", "RELEASE_CORRECTION", "RESET_CORRECTION_BUDGET", "SET_CORRECTION_MODE"].includes(message.type)) {
-    if (!isChat || !validId(payload.chatId) || chats.get(payload.chatId) !== true) return fail("DISABLED", "Correzione disattivata.");
-    if (message.type === "SET_CORRECTION_MODE" && typeof payload.enabled !== "boolean") return fail("INVALID_PAYLOAD", "Stato non valido.");
-    if (!["RESET_CORRECTION_BUDGET", "SET_CORRECTION_MODE"].includes(message.type) && (typeof payload.key !== "string" || !/^[a-f0-9]{64}$/.test(payload.key))) return fail("INVALID_PAYLOAD", "Correzione non valida.");
-    let result;
-    // Serialize reservations across tabs: the same answer can create one send.
-    persistQueue = persistQueue.catch(() => {}).then(async () => {
-      if (chats.get(payload.chatId) !== true) {result = fail("DISABLED", "Correzione disattivata."); return;}
-      const key = `${payload.chatId}:${payload.key}`;
-      if (message.type === "SET_CORRECTION_MODE") {
-        correctionModes.set(payload.chatId, payload.enabled);
-        if (correctionModes.size > 1000) correctionModes.delete(correctionModes.keys().next().value);
-        result = {ok: true, autoCorrection: payload.enabled};
-      }
-      else if (message.type === "RESET_CORRECTION_BUDGET") correctionBudget.set(payload.chatId, 0);
-      else if (message.type === "RELEASE_CORRECTION") {
-        if (correctionLedger.get(key) === payload.reservation) {correctionLedger.delete(key); correctionBudget.set(payload.chatId, Math.max(0, (correctionBudget.get(payload.chatId) || 0) - 1));}
-      } else if (correctionModes.get(payload.chatId) === false) {
-        result = fail("DISABLED", "Correzione automatica disattivata."); return;
-      } else if (correctionLedger.has(key) || (correctionBudget.get(payload.chatId) || 0) >= 2) {
-        result = {ok: true, reserved: false, budget_exhausted: (correctionBudget.get(payload.chatId) || 0) >= 2}; return;
-      } else {
-        const reservation = `${sender.tab.id}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-        correctionLedger.set(key, reservation); correctionBudget.set(payload.chatId, (correctionBudget.get(payload.chatId) || 0) + 1);
-        if (correctionLedger.size > 200) correctionLedger.delete(correctionLedger.keys().next().value);
-        if (correctionBudget.size > 1000) correctionBudget.delete(correctionBudget.keys().next().value);
-        result = {ok: true, reserved: true, reservation};
-      }
-      await extensionAPI.storage.local.set({factttlCorrections: {ledger: Object.fromEntries(correctionLedger), budget: Object.fromEntries(correctionBudget), modes: Object.fromEntries(correctionModes)}});
-      if (message.type === "SET_CORRECTION_MODE") for (const [tabId, chatId] of knownTabs) {
-        if (chatId === payload.chatId && tabId !== sender.tab.id) extensionAPI.tabs.sendMessage(tabId, {type: "CORRECTION_MODE_CHANGED", chatId, enabled: payload.enabled}).catch(() => knownTabs.delete(tabId));
-      }
-      result ||= {ok: true};
-    });
-    await persistQueue; return result;
-  }
-
   if (message.type === "GET_HEALTH" && isChat &&
       (!validId(payload.chatId) || chats.get(payload.chatId) !== true)) {
     return fail("DISABLED", "FactTTL è disattivato in questa chat.", payload);
+  }
+
+  // Retired composer and memory messages must fail before any token lookup or
+  // bridge request. Only the passive verifier and explicit health check remain.
+  if (!["GET_HEALTH", "VERIFY_MESSAGE"].includes(message.type)) {
+    return fail("INVALID_MESSAGE", "Richiesta non consentita.");
   }
 
   const token = await readToken();
@@ -443,18 +402,6 @@ async function handle(message, sender) {
     }
   }
 
-  if (message.type === "GET_MEMORY_CONTEXT") {
-    if (!isChat || !validId(payload.chatId) || chats.get(payload.chatId) !== true ||
-        typeof payload.query !== "string" || !payload.query.trim() || payload.query.length > 2000 ||
-        (payload.urls && (!Array.isArray(payload.urls) || payload.urls.length > 10 || payload.urls.some(url => typeof url !== "string" || url.length > 4096)))) {
-      return fail("DISABLED", "Memoria non disponibile per questa chat.", payload);
-    }
-    try {
-      const context = await bridgeRequest("/context", token, new AbortController(), {query: payload.query, urls: payload.urls || [], limit: 6}, 3500);
-      if (chats.get(payload.chatId) !== true) return fail("DISABLED", "FactTTL disattivato.");
-      return {ok: true, context};
-    } catch (error) { return safeError(error, payload); }
-  }
   if (message.type !== "VERIFY_MESSAGE" || !isChat) return fail("INVALID_MESSAGE", "Richiesta non consentita.");
   let request;
   try {

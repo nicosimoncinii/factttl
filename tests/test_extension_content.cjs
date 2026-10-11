@@ -224,18 +224,18 @@ test("mixed product references preserve host shortcuts locally without fetching 
   assert.match(publicPayload.text, /Syma S107G 41,99 EUR Apri prodotto/);
 });
 
-test("production scanner settles host product-search shortcuts locally and invokes correction without a bridge request", () => {
+test("production scanner settles host product-search shortcuts locally without a bridge request or composer action", () => {
   const vm = require("node:vm");
   const source = fs.readFileSync(require.resolve("../integrations/chatgpt-extension/content.js"), "utf8");
-  const fn = source.slice(source.indexOf("  function scan()"), source.indexOf("  function updateCorrection()"));
+  const fn = source.slice(source.indexOf("  function scan()"), source.indexOf("  async function pump()"));
   const target = {tagName: "A", href: "https://chatgpt.com/?hints=search&q=Syma+S107G", isConnected: true};
   const payload = {text: "Syma S107G 41,99 EUR", links: [target.href]};
   const state = {lastText: JSON.stringify(payload), signature: "", changedAt: Date.now() - 2000, pending: false, finishedAt: 0, box: {remove() {}}};
-  const results = []; let corrected = 0;
+  const results = [];
   const context = vm.createContext({enabled: true, currentChat: "chatgpt:a", epoch: 1, states: new Map([[target, state]]), queue: [],
     Date, JSON, Set, Map, MESSAGE_SELECTOR: "assistant", document: {querySelectorAll: () => [{}]}, itemTargets: () => [target], sourceFor: () => target,
     serializeMessage: () => payload, hostSearchURL: require("../integrations/chatgpt-extension/content.js").hostSearchURL,
-    isStreaming: () => false, showResult: (_state, result) => results.push(result), pump: () => {}, updateCorrection: () => {corrected += 1;}});
+    isStreaming: () => false, showResult: (_state, result) => results.push(result), pump: () => {}});
   vm.runInContext(fn + "\nscan();", context);
   assert.equal(context.queue.length, 0);
   assert.equal(results.length, 1);
@@ -243,5 +243,4 @@ test("production scanner settles host product-search shortcuts locally and invok
   assert.equal(results[0].result.reference.basis, "url_structure");
   assert.equal(state.signature, JSON.stringify(payload));
   assert.ok(state.finishedAt > 0);
-  assert.equal(corrected, 1);
 });

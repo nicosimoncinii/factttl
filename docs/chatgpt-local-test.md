@@ -48,8 +48,10 @@ tunnel-client-runtime.exe run --control-plane.tunnel-id <tunnel_id> --control-pl
 
 Verifica i flag con `--help` se usi una runtime diversa. Non esporre direttamente
 la porta 8000 su Internet. Un `200` su `http://127.0.0.1:18080/readyz` conferma
-la readiness del client tunnel, non l'installazione o selezione del plugin nella
-chat.
+solo l'avvio locale. Il launcher richiede inoltre `status: ok` da
+`http://127.0.0.1:18080/health/control-plane`, cioè almeno un poll autenticato
+verso OpenAI. Nessuno dei due controlli dimostra che il plugin sia stato
+selezionato nella chat.
 
 ## Collegamento in ChatGPT
 
@@ -65,8 +67,10 @@ chat.
 
 Il browser bridge su `127.0.0.1:8765` è un servizio diverso. Serve ai badge
 passivi dell'estensione e il suo stato “collegato” non prova la connessione MCP.
-La porta 8000 serve il protocollo MCP; la porta 18080 espone solo la health della
-runtime tunnel.
+La porta 8000 serve il protocollo MCP; la porta 18080 espone solo la diagnostica
+locale della runtime tunnel. La runtime ridotta usata dal launcher non offre una
+pagina di configurazione: lo stato strutturato è disponibile su
+`/health?details=true`.
 
 ## Prova end-to-end del comportamento richiesto
 

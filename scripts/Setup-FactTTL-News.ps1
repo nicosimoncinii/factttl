@@ -25,7 +25,7 @@ $factttlSource = "https://github.com/ollama/ollama/releases/download/v$factttlVe
 $factttlModels = Join-Path $factttlRuntime 'models'
 $factttlProfile = Join-Path $factttlRuntime 'profile'
 $factttlTmp = Join-Path $factttlRuntime 'tmp'
-$factttlPidFile = Join-Path $factttlRuntime 'ollama.pid'
+$factttlOwnerFile = Join-Path $factttlRuntime 'ollama-owner.json'
 $factttlStateFile = Join-Path $factttlRuntime 'installed.json'
 if (-not $InferenceProfile -and (Test-Path -LiteralPath $factttlStateFile)) {
     $InferenceProfile = (Get-Content -LiteralPath $factttlStateFile -Raw | ConvertFrom-Json).inference_profile
@@ -46,6 +46,97 @@ function Test-FactTTLOllama {
         $factttlResponse = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/version' -TimeoutSec 2
         return [bool]$factttlResponse.version
     } catch { return $false }
+}
+
+function Get-FactTTLOllamaListenerPid {
+    $factttlListeners = @(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort 11434 -State Listen -ErrorAction SilentlyContinue)
+    $factttlListenerPids = @($factttlListeners | Select-Object -ExpandProperty OwningProcess -Unique)
+    if ($factttlListenerPids.Count -gt 1) {
+        throw 'Più processi risultano in ascolto sulla porta locale 11434: stato ambiguo.'
+    }
+    if ($factttlListenerPids.Count -eq 1) { return [int]$factttlListenerPids[0] }
+    return $null
+}
+
+function Get-FactTTLCommandLineHash([string]$CommandLine) {
+    $factttlBytes = [Text.Encoding]::UTF8.GetBytes($CommandLine)
+    return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($factttlBytes)).ToLowerInvariant()
+}
+
+function Get-FactTTLOllamaProcessEvidence([int]$ProcessId) {
+    if ($ProcessId -le 0) { return $false }
+    $factttlProcess = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $factttlProcess) { return $null }
+    try {
+        $factttlProcessPath = [IO.Path]::GetFullPath($factttlProcess.Path)
+        $factttlExpectedPath = [IO.Path]::GetFullPath($factttlExe)
+        if (-not $factttlProcessPath.Equals($factttlExpectedPath, [StringComparison]::OrdinalIgnoreCase)) {
+            return $null
+        }
+        $factttlCimProcess = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction Stop
+        if (-not $factttlCimProcess -or -not $factttlCimProcess.CommandLine) { return $null }
+        $factttlCommandLine = [string]$factttlCimProcess.CommandLine
+        if ($factttlCommandLine -notmatch '(?i)(?:^|\s)serve(?:\s|$)') { return $null }
+        return [pscustomobject]@{
+            process_id = $ProcessId
+            creation_time_utc_ticks = $factttlProcess.StartTime.ToUniversalTime().Ticks
+            command_line_sha256 = Get-FactTTLCommandLineHash -CommandLine $factttlCommandLine
+            executable = $factttlProcessPath
+            parent_process_id = [int]$factttlCimProcess.ParentProcessId
+        }
+    } catch { return $null }
+}
+
+function Test-FactTTLOllamaOwnerIdentity([int]$ListenerPid) {
+    if (-not (Test-Path -LiteralPath $factttlOwnerFile)) { return $false }
+    try {
+        $factttlIdentity = Get-Content -LiteralPath $factttlOwnerFile -Raw | ConvertFrom-Json
+        if ([int]$factttlIdentity.process_id -ne $ListenerPid) { return $false }
+        $factttlEvidence = Get-FactTTLOllamaProcessEvidence -ProcessId $ListenerPid
+        if (-not $factttlEvidence) { return $false }
+        return (
+            [long]$factttlIdentity.creation_time_utc_ticks -eq [long]$factttlEvidence.creation_time_utc_ticks -and
+            [string]$factttlIdentity.command_line_sha256 -eq $factttlEvidence.command_line_sha256 -and
+            [IO.Path]::GetFullPath([string]$factttlIdentity.executable).Equals(
+                [IO.Path]::GetFullPath($factttlExe),
+                [StringComparison]::OrdinalIgnoreCase
+            )
+        )
+    } catch { return $false }
+}
+
+function Write-FactTTLOllamaOwnerIdentity($Evidence) {
+    $factttlTemporaryOwnerFile = "$factttlOwnerFile.$([Guid]::NewGuid().ToString('N')).tmp"
+    try {
+        $factttlOwnerJson = @{
+            process_id = $Evidence.process_id
+            creation_time_utc_ticks = $Evidence.creation_time_utc_ticks
+            command_line_sha256 = $Evidence.command_line_sha256
+            executable = $Evidence.executable
+        } | ConvertTo-Json
+        [IO.File]::WriteAllText($factttlTemporaryOwnerFile, $factttlOwnerJson, [Text.UTF8Encoding]::new($false))
+        [IO.File]::Move($factttlTemporaryOwnerFile, $factttlOwnerFile, $true)
+    } finally {
+        if (Test-Path -LiteralPath $factttlTemporaryOwnerFile) {
+            Remove-Item -LiteralPath $factttlTemporaryOwnerFile -Force
+        }
+    }
+}
+
+function Stop-FactTTLNewOllamaProcess($ProcessHandle, [long]$CreationTimeUtcTicks) {
+    if (-not $ProcessHandle) { return }
+    $factttlCurrent = Get-Process -Id $ProcessHandle.Id -ErrorAction SilentlyContinue
+    if (-not $factttlCurrent) { return }
+    try {
+        $factttlSameCreation = $factttlCurrent.StartTime.ToUniversalTime().Ticks -eq $CreationTimeUtcTicks
+        $factttlSameExecutable = [IO.Path]::GetFullPath($factttlCurrent.Path).Equals(
+            [IO.Path]::GetFullPath($factttlExe),
+            [StringComparison]::OrdinalIgnoreCase
+        )
+        if ($factttlSameCreation -and $factttlSameExecutable) {
+            Stop-Process -Id $factttlCurrent.Id -ErrorAction SilentlyContinue
+        }
+    } catch { }
 }
 
 if (-not (Test-Path -LiteralPath $factttlExe)) {
@@ -87,15 +178,15 @@ if (-not (Test-Path -LiteralPath $factttlExe)) {
 }
 
 if (Test-FactTTLOllama) {
-    if (-not (Test-Path -LiteralPath $factttlPidFile)) {
-        throw 'Porta 11434 già occupata da un Ollama esterno: non ne modifico la configurazione.'
-    }
-    $factttlRecordedPid = [int](Get-Content -LiteralPath $factttlPidFile -Raw)
-    $factttlOwnedProcess = Get-Process -Id $factttlRecordedPid -ErrorAction SilentlyContinue
-    if (-not $factttlOwnedProcess -or $factttlOwnedProcess.Path -ne $factttlExe) {
+    $factttlListenerPid = Get-FactTTLOllamaListenerPid
+    if (-not $factttlListenerPid -or -not (Test-FactTTLOllamaOwnerIdentity -ListenerPid $factttlListenerPid)) {
         throw 'La porta 11434 risponde ma non appartiene al runtime locale registrato.'
     }
 } else {
+    $factttlExistingListenerPid = Get-FactTTLOllamaListenerPid
+    if ($factttlExistingListenerPid) {
+        throw 'Porta 11434 già occupata da un processo non verificabile: non lo termino né lo riconfiguro.'
+    }
     Write-Host 'Avvio Ollama locale in background, cloud disabilitato.'
     $factttlEnvironment = @{
         OLLAMA_HOST = '127.0.0.1:11434'
@@ -113,13 +204,43 @@ if (Test-FactTTLOllama) {
         TMP = $factttlTmp
     }
     $factttlDaemon = Start-Process -FilePath $factttlExe -ArgumentList @('serve') -Environment $factttlEnvironment -WorkingDirectory $factttlRuntime -WindowStyle Hidden -RedirectStandardOutput (Join-Path $factttlRuntime 'ollama.out.log') -RedirectStandardError (Join-Path $factttlRuntime 'ollama.err.log') -PassThru
-    $factttlDaemon.Id | Set-Content -LiteralPath $factttlPidFile
-    for ($factttlAttempt = 0; $factttlAttempt -lt 40; $factttlAttempt++) {
-        if (Test-FactTTLOllama) { break }
-        if ($factttlDaemon.HasExited) { throw 'Ollama non si è avviato: controlla il log locale senza pubblicarlo.' }
-        Start-Sleep -Milliseconds 250
+    $factttlDaemonCreationTimeUtcTicks = $factttlDaemon.StartTime.ToUniversalTime().Ticks
+    $factttlLaunchedListenerEvidence = $null
+    try {
+        $factttlListenerEvidence = $null
+        for ($factttlAttempt = 0; $factttlAttempt -lt 40; $factttlAttempt++) {
+            $factttlCandidatePid = Get-FactTTLOllamaListenerPid
+            if ($factttlCandidatePid) {
+                $factttlCandidateEvidence = Get-FactTTLOllamaProcessEvidence -ProcessId $factttlCandidatePid
+                $factttlWasLaunchedHere = $factttlCandidateEvidence -and (
+                    $factttlCandidatePid -eq $factttlDaemon.Id -or
+                    $factttlCandidateEvidence.parent_process_id -eq $factttlDaemon.Id
+                )
+                if (-not $factttlWasLaunchedHere) {
+                    throw 'La porta 11434 è stata acquisita da un processo diverso da quello appena avviato; non lo termino.'
+                }
+                $factttlLaunchedListenerEvidence = $factttlCandidateEvidence
+                if (Test-FactTTLOllama) {
+                    $factttlListenerEvidence = $factttlCandidateEvidence
+                    break
+                }
+            }
+            Start-Sleep -Milliseconds 250
+        }
+        if (-not $factttlListenerEvidence) {
+            throw 'Runtime locale non pronto sulla porta 11434: controlla il log locale senza pubblicarlo.'
+        }
+        # This identity is persisted only after the exact listener was proven to
+        # be the process launched above (or its direct child, which inherits env).
+        Write-FactTTLOllamaOwnerIdentity -Evidence $factttlListenerEvidence
+    } catch {
+        if ($factttlLaunchedListenerEvidence) {
+            $factttlLaunchedListener = Get-Process -Id $factttlLaunchedListenerEvidence.process_id -ErrorAction SilentlyContinue
+            Stop-FactTTLNewOllamaProcess -ProcessHandle $factttlLaunchedListener -CreationTimeUtcTicks $factttlLaunchedListenerEvidence.creation_time_utc_ticks
+        }
+        Stop-FactTTLNewOllamaProcess -ProcessHandle $factttlDaemon -CreationTimeUtcTicks $factttlDaemonCreationTimeUtcTicks
+        throw
     }
-    if (-not (Test-FactTTLOllama)) { throw 'Runtime locale non pronto sulla porta 11434.' }
 }
 
 $factttlExisting = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5
